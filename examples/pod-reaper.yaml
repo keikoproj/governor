@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: governor
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-reaper
+  namespace: governor
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-reaper
+rules:
+- apiGroups: [""]
+  resources: ["pods", ]
+  verbs: ["get", "delete", "list"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-reaper
+subjects:
+- kind: ServiceAccount
+  name: pod-reaper
+  namespace: governor
+roleRef:
+  kind: ClusterRole
+  name: pod-reaper
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: pod-reaper
+  namespace: governor
+spec:
+  # Scan every 10 minutes
+  schedule: "*/10 * * * *"
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  # Disallow concurrent executions
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  backoffLimit: 0
+  jobTemplate:
+    spec:
+      # Terminate long running pods
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          serviceAccountName: pod-reaper
+          restartPolicy: Never
+          containers:
+          - name: pod-reaper
+            image: governor:latest
+            args:
+            - governor
+            - reap
+            - pod
+            # Consider a pod reapable after 10 minutes in Terminating state
+            - --reap-after=10
+            # Only reap pods without containers running
+            - --soft-reap=true

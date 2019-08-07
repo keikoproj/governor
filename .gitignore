@@ -1,0 +1,6 @@
+cover.out
+cover.html
+_output/*
+bin
+bin/*
+.DS_Store
