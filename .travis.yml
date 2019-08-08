@@ -20,6 +20,6 @@ jobs:
       if: type = push
       script:
       - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-      - export IMG=orkaproj/governor:$TRAVIS_BRANCH
+      - export IMAGE=orkaproj/governor:$TRAVIS_BRANCH
       - make docker-build
       - make docker-push
