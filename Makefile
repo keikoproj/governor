@@ -10,44 +10,32 @@ LDFLAGS=-ldflags "-X ${LDFLAG_LOCATION}.buildDate=${BUILD} -X ${LDFLAG_LOCATION}
 
 GIT_TAG=$(shell git rev-parse --short HEAD)
 
-ifeq (${DOCKER_PUSH},true)
-ifndef IMAGE_NAMESPACE
-$(error IMAGE_NAMESPACE must be set to push images (e.g. IMAGE_NAMESPACE=docker.mycompany.com))
-endif
-endif
-
-ifdef IMAGE_NAMESPACE
-IMAGE_PREFIX=${IMAGE_NAMESPACE}/
-endif
-
-ifndef IMAGE_TAG
-IMAGE_TAG=${GIT_TAG}
-endif
-
+IMAGE ?= governor:latest
 
 # IMAGE is the image name of governer
 IMAGE:=$(IMAGE_PREFIX)governor:$(IMAGE_TAG)
-IMAGE_LATEST:=$(IMAGE_PREFIX)governor:latest
 
 all: clean build test
 
 build:
 	CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/orkaproj/governor/cmd/governor
 
-docker:
+docker-build:
 	docker build -t $(IMAGE) .
-	docker tag $(IMAGE) $(IMAGE_LATEST)
-	@if [ "$(DOCKER_PUSH)" = "true" ] ; then docker push $(IMAGE) ; fi
+
+# Push the docker image
+docker-push:
+	docker push ${IMAGE}
 
 clean:
 	rm -rf _output
 
 test:
-	go test -v ./... -coverprofile _output/cover.out
+	go test -v ./... -coverprofile ./coverage.txt
 
 vtest:
-	go test -v ./... -coverprofile _output/cover.out --logging-enabled
+	go test -v ./... -coverprofile ./coverage.txt --logging-enabled
 
 coverage:
-	go test -coverprofile _output/cover.out -v ./...
-	go tool cover -html=_output/cover.out -o _output/cover.html
+	go test -coverprofile ./coverage.txt -v ./...
+	go tool cover -html=./coverage.txt -o _output/cover.html
