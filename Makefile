@@ -12,9 +12,6 @@ GIT_TAG=$(shell git rev-parse --short HEAD)
 
 IMAGE ?= governor:latest
 
-# IMAGE is the image name of governer
-IMAGE:=$(IMAGE_PREFIX)governor:$(IMAGE_TAG)
-
 all: clean build test
 
 build:
