@@ -6,10 +6,6 @@ go:
 git:
   depth: 1
 
-env:
-  global:
-    - GO111MODULE=on
-
 install: skip
 
 jobs:
@@ -17,7 +13,7 @@ jobs:
 
     - stage: unit-test
       script:
-      - go test -v -mod=vendor ./... -coverprofile ./coverage.txt
+      - go test -v ./... -coverprofile ./coverage.txt
       - bash <(curl -s https://codecov.io/bash)
 
     - stage: publish-image
