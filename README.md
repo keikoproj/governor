@@ -1,5 +1,7 @@
 # governor
-
+[![Build Status](https://travis-ci.org/orkaproj/governor.svg?branch=master)](https://travis-ci.org/orkaproj/governor)
+[![codecov](https://codecov.io/gh/orkaproj/governor/branch/master/graph/badge.svg)](https://codecov.io/gh/orkaproj/governor)
+[![Go Report Card](https://goreportcard.com/badge/github.com/orkaproj/governor)](https://goreportcard.com/report/github.com/orkaproj/governor)
 > A collection of cluster reliability tools built for Kubernetes
 
 Governor is a collection of tools for improving the stability of the large Kubernetes clusters as a single Docker image.
