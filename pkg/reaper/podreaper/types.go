@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-//Context holds the context of the pod-reaper and target cluster
+// ReaperContext holds the context of the pod-reaper and target cluster
 type ReaperContext struct {
 	KubernetesClient     kubernetes.Interface
 	KubernetesConfigPath string
