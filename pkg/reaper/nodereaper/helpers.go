@@ -1,5 +1,4 @@
 /*
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -253,7 +252,7 @@ func terminateInstance(w autoscalingiface.AutoScalingAPI, id string) error {
 	if err != nil {
 		return err
 	}
-	log.Info("instance terminate event occured")
+	log.Info("instance terminate event occurred")
 	return nil
 }
 
