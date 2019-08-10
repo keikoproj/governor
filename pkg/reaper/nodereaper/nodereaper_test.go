@@ -46,7 +46,7 @@ func init() {
 
 func (m *stubEC2) DescribeTags(input *ec2.DescribeTagsInput) (*ec2.DescribeTagsOutput, error) {
 	output := &ec2.DescribeTagsOutput{Tags: []*ec2.TagDescription{
-		&ec2.TagDescription{
+		{
 			Key:   aws.String("aws:autoscaling:groupName"),
 			Value: aws.String(m.AsgNameTag),
 		},
@@ -68,7 +68,7 @@ func (m *stubASG) DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScali
 	}
 
 	output := &autoscaling.DescribeAutoScalingGroupsOutput{AutoScalingGroups: []*autoscaling.Group{
-		&autoscaling.Group{
+		{
 			AutoScalingGroupName: aws.String(m.AsgName),
 			Instances:            instances,
 			DesiredCapacity:      &m.DesiredCapacity,

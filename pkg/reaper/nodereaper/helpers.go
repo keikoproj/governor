@@ -253,14 +253,14 @@ func terminateInstance(w autoscalingiface.AutoScalingAPI, id string) error {
 	if err != nil {
 		return err
 	}
-	log.Info("instance terminate event occured")
+	log.Info("instance terminate event occurred")
 	return nil
 }
 
 func getInstanceTagValue(w ec2iface.EC2API, instance string, key string) (string, error) {
 	filters := []*ec2.Filter{
-		&ec2.Filter{Name: aws.String("resource-id"), Values: []*string{&instance}},
-		&ec2.Filter{Name: aws.String("key"), Values: []*string{&key}}}
+		{Name: aws.String("resource-id"), Values: []*string{&instance}},
+		{Name: aws.String("key"), Values: []*string{&key}}}
 	describeTagsInput := &ec2.DescribeTagsInput{Filters: filters}
 	response, err := w.DescribeTags(describeTagsInput)
 	if err != nil {

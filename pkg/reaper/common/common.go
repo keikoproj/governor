@@ -26,8 +26,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// Log is the common logger
 var Log = logrus.New()
 
+// HomeDir gets the current user's homedir
 func HomeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
 		return h
@@ -35,6 +37,7 @@ func HomeDir() string {
 	return ""
 }
 
+// PathExists checks whether a given path exists or not
 func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -46,6 +49,7 @@ func PathExists(path string) bool {
 	return false
 }
 
+// InClusterAuth returns an in-cluster kubernetes client
 func InClusterAuth() (*kubernetes.Clientset, error) {
 	Log.Infoln("starting in-cluster auth")
 
@@ -62,6 +66,7 @@ func InClusterAuth() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
+// OutOfClusterAuth returns an external kubernetes client
 func OutOfClusterAuth(providedConfigPath string) (*kubernetes.Clientset, error) {
 	Log.Infoln("starting cluster external auth")
 

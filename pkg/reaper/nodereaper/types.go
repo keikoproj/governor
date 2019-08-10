@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// ReaperAwsAuth is an AWS client-set
 type ReaperAwsAuth struct {
 	EC2 ec2iface.EC2API
 	ASG autoscalingiface.AutoScalingAPI
@@ -51,7 +52,7 @@ type Args struct {
 	ReapAfter               float64
 }
 
-//ReaperContext holds the context of the node-reaper and target cluster
+// ReaperContext holds the context of the node-reaper and target cluster
 type ReaperContext struct {
 	// clients
 	KubernetesClient     kubernetes.Interface
@@ -89,12 +90,14 @@ type ReaperContext struct {
 	DrainedInstances          int
 }
 
+// AgeDrainReapableInstances holds an age-reapable node
 type AgeDrainReapableInstance struct {
 	NodeName   string
 	InstanceID string
 	AgeMinutes int
 }
 
+// AgeSorter sorts age-reapable nodes by their AgeMinutes
 type AgeSorter []AgeDrainReapableInstance
 
 func (a AgeSorter) Len() int           { return len(a) }

@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/orkaproj/governor/pkg/reaper/nodereaper"
+	"github.com/spf13/cobra"
 )
 
 var nodeReaperArgs nodereaper.Args
