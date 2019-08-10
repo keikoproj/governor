@@ -1,4 +1,5 @@
 /*
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -258,8 +259,8 @@ func terminateInstance(w autoscalingiface.AutoScalingAPI, id string) error {
 
 func getInstanceTagValue(w ec2iface.EC2API, instance string, key string) (string, error) {
 	filters := []*ec2.Filter{
-		&ec2.Filter{Name: aws.String("resource-id"), Values: []*string{&instance}},
-		&ec2.Filter{Name: aws.String("key"), Values: []*string{&key}}}
+		{Name: aws.String("resource-id"), Values: []*string{&instance}},
+		{Name: aws.String("key"), Values: []*string{&key}}}
 	describeTagsInput := &ec2.DescribeTagsInput{Filters: filters}
 	response, err := w.DescribeTags(describeTagsInput)
 	if err != nil {
