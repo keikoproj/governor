@@ -26,7 +26,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var log = logrus.New()
+// Log is the common logger
+var Log = logrus.New()
 
 // HomeDir gets the current user's homedir
 func HomeDir() string {
@@ -50,7 +51,7 @@ func PathExists(path string) bool {
 
 // InClusterAuth returns an in-cluster kubernetes client
 func InClusterAuth() (*kubernetes.Clientset, error) {
-	log.Infoln("starting in-cluster auth")
+	Log.Infoln("starting in-cluster auth")
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -67,7 +68,7 @@ func InClusterAuth() (*kubernetes.Clientset, error) {
 
 // OutOfClusterAuth returns an external kubernetes client
 func OutOfClusterAuth(providedConfigPath string) (*kubernetes.Clientset, error) {
-	log.Infoln("starting cluster external auth")
+	Log.Infoln("starting cluster external auth")
 
 	var configPath string
 
@@ -77,18 +78,18 @@ func OutOfClusterAuth(providedConfigPath string) (*kubernetes.Clientset, error) 
 		configPath = filepath.Join(HomeDir(), ".kube", "config")
 	} else {
 		err := fmt.Sprintf("could not find valid kubeconfig file")
-		log.Errorln(err)
+		Log.Errorln(err)
 		return &kubernetes.Clientset{}, fmt.Errorf(err)
 	}
 
-	log.Infof("kubeconfig: %v\n", configPath)
+	Log.Infof("kubeconfig: %v\n", configPath)
 
 	config, err := clientcmd.BuildConfigFromFlags("", configPath)
 	if err != nil {
 		return &kubernetes.Clientset{}, err
 	}
 
-	log.Infof("target: %v\n", config.Host)
+	Log.Infof("target: %v\n", config.Host)
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
