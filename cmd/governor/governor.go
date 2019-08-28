@@ -15,7 +15,7 @@ limitations under the License.
 
 package main
 
-import "github.com/orkaproj/governor/cmd/governor/app"
+import "github.com/keikoproj/governor/cmd/governor/app"
 
 func main() {
 	app.Execute()

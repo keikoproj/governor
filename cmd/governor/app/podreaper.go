@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/orkaproj/governor/pkg/reaper/podreaper"
+	"github.com/keikoproj/governor/pkg/reaper/podreaper"
 	"github.com/spf13/cobra"
 )
 

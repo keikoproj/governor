@@ -1,6 +1,6 @@
 # How to contribute
 
-1. Fork it (<https://github.com/orkaproj/governor/fork>)
+1. Fork it (<https://github.com/keikoproj/governor/fork>)
 2. Open an issue and discuss the feature / bug
 3. Create your feature branch (`git checkout -b feature/fooBar`)
 4. Commit your changes (`git commit -am 'Add some fooBar'`)

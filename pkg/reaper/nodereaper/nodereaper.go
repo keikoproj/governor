@@ -24,7 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/orkaproj/governor/pkg/reaper/common"
+	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +33,7 @@ import (
 var log = logrus.New()
 
 const (
-	ageUnreapableAnnotationKey = "governor.orkaproj.io/age-unreapable"
+	ageUnreapableAnnotationKey = "governor.keikoproj.io/age-unreapable"
 )
 
 // Validate command line arguments

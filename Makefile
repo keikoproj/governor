@@ -3,7 +3,7 @@
 
 COMMIT=`git rev-parse HEAD`
 BUILD=`date +%FT%T%z`
-LDFLAG_LOCATION=github.com/orkaproj/governor/cmd/governor/app
+LDFLAG_LOCATION=github.com/keikoproj/governor/cmd/governor/app
 
 LDFLAGS=-ldflags "-X ${LDFLAG_LOCATION}.buildDate=${BUILD} -X ${LDFLAG_LOCATION}.gitCommit=${COMMIT}"
 
@@ -15,7 +15,7 @@ IMAGE ?= governor:latest
 all: clean build test
 
 build:
-	CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/orkaproj/governor/cmd/governor
+	CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/keikoproj/governor/cmd/governor
 
 docker-build:
 	docker build -t $(IMAGE) .
