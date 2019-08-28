@@ -1,7 +1,7 @@
 # governor
-[![Build Status](https://travis-ci.org/orkaproj/governor.svg?branch=master)](https://travis-ci.org/orkaproj/governor)
-[![codecov](https://codecov.io/gh/orkaproj/governor/branch/master/graph/badge.svg)](https://codecov.io/gh/orkaproj/governor)
-[![Go Report Card](https://goreportcard.com/badge/github.com/orkaproj/governor)](https://goreportcard.com/report/github.com/orkaproj/governor)
+[![Build Status](https://travis-ci.org/keikoproj/governor.svg?branch=master)](https://travis-ci.org/keikoproj/governor)
+[![codecov](https://codecov.io/gh/keikoproj/governor/branch/master/graph/badge.svg)](https://codecov.io/gh/keikoproj/governor)
+[![Go Report Card](https://goreportcard.com/badge/github.com/keikoproj/governor)](https://goreportcard.com/report/github.com/keikoproj/governor)
 > A collection of cluster reliability tools built for Kubernetes
 
 Governor is a collection of tools for improving the stability of the large Kubernetes clusters as a single Docker image.
@@ -22,9 +22,9 @@ Assuming an AWS-hosted running kubernetes cluster:
 kubectl create namespace governor
 
 # Using a CronJob
-kubectl apply -n governor -f https://raw.githubusercontent.com/orkaproj/governor/master/examples/node-reaper.yaml
+kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governor/master/examples/node-reaper.yaml
 
-kubectl apply -n governor -f https://raw.githubusercontent.com/orkaproj/governor/master/examples/pod-reaper.yaml
+kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governor/master/examples/pod-reaper.yaml
 ```
 
 ### Available Packages

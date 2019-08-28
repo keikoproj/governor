@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/orkaproj/governor/pkg/reaper/nodereaper"
+	"github.com/keikoproj/governor/pkg/reaper/nodereaper"
 	"github.com/spf13/cobra"
 )
 

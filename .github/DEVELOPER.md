@@ -34,9 +34,9 @@ Using the `Makefile` you can run basic unit tests.
 ```bash
 $ make test
 go test -v ./...
-?       github.com/orkaproj/governor/cmd/governor   [no test files]
-?       github.com/orkaproj/governor/cmd/governor/app   [no test files]
-?       github.com/orkaproj/governor/pkg/reaper/common  [no test files]
+?       github.com/keikoproj/governor/cmd/governor   [no test files]
+?       github.com/keikoproj/governor/cmd/governor/app   [no test files]
+?       github.com/keikoproj/governor/pkg/reaper/common  [no test files]
 === RUN   TestGetUnreadyNodesPositive
 --- PASS: TestGetUnreadyNodesPositive (0.00s)
 === RUN   TestGetUnreadyNodesNegative
@@ -83,7 +83,7 @@ go test -v ./...
 --- PASS: TestProviderIDParser (0.00s)
 PASS
 coverage: 60.3% of statements
-ok      github.com/orkaproj/governor/pkg/reaper/nodereaper  4.396s  coverage: 60.3% of statements
+ok      github.com/keikoproj/governor/pkg/reaper/nodereaper  4.396s  coverage: 60.3% of statements
 === RUN   TestDeriveStatePositive
 --- PASS: TestDeriveStatePositive (0.00s)
 === RUN   TestDeriveStateNegative
@@ -103,7 +103,7 @@ ok      github.com/orkaproj/governor/pkg/reaper/nodereaper  4.396s  coverage: 60
 === RUN   TestValidateArgumentsNegative
 --- PASS: TestValidateArgumentsNegative (0.00s)
 coverage: 65.8% of statements
-ok      github.com/orkaproj/governor/pkg/reaper/podreaper   0.377s  coverage: 65.8% of statements
+ok      github.com/keikoproj/governor/pkg/reaper/podreaper   0.377s  coverage: 65.8% of statements
 ```
 
 You can use `make vtest` to run test with verbose logging, you can also run `make coverage` to generate a coverage report.
