@@ -92,6 +92,7 @@ type ReaperContext struct {
 	AllEvents                 []v1.Event
 	ClusterInstances          []*ec2.Instance
 	ClusterInstancesData      map[string]float64
+	GhostInstances            map[string]string
 	NodeInstanceIDs           map[string]string
 	SelfNode                  string
 	SelfNamespace             string

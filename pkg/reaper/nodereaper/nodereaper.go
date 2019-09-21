@@ -52,6 +52,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.ReapableInstances = make(map[string]string)
 	ctx.DrainableInstances = make(map[string]string)
 	ctx.ClusterInstancesData = make(map[string]float64)
+	ctx.GhostInstances = make(map[string]string)
 	ctx.NodeInstanceIDs = make(map[string]string)
 	ctx.AgeDrainReapableInstances = make([]AgeDrainReapableInstance, 0)
 	ctx.AgeKillOrder = make([]string, 0)
@@ -232,6 +233,13 @@ func Run(args *Args) error {
 		return err
 	}
 
+	log.Infoln("starting drain condition check for ghost nodes")
+	err = ctx.deriveGhostDrainReapableNodes(awsAuth)
+	if err != nil {
+		log.Errorf("failed to derive age drain-reapable nodes, %v", err)
+		return err
+	}
+
 	log.Infoln("starting reap condition check")
 	err = ctx.deriveReapableNodes()
 	if err != nil {
@@ -314,6 +322,70 @@ func (ctx *ReaperContext) deriveFlappyDrainReapableNodes() error {
 				ctx.addDrainable(nodeName, nodeInstanceID)
 				ctx.addReapable(nodeName, nodeInstanceID)
 			}
+		}
+	}
+	return nil
+}
+
+// Handle ghost-reapable nodes
+func (ctx *ReaperContext) deriveGhostDrainReapableNodes(w ReaperAwsAuth) error {
+	log.Infoln("scanning for ghost drain-reapable nodes")
+	for instance, node := range ctx.NodeInstanceIDs {
+		// find ghost instance
+		describeInput := &ec2.DescribeInstancesInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{"terminated"}),
+				},
+				{
+					Name:   aws.String("instance-id"),
+					Values: aws.StringSlice([]string{instance}),
+				},
+			},
+		}
+		output, err := w.EC2.DescribeInstances(describeInput)
+		if err != nil {
+			log.Errorf("failed to list cluster ec2 instances, %v", err)
+			return err
+		}
+		if len(output.Reservations[0].Instances) == 0 {
+			continue
+		}
+
+		// find the real instance id by node name
+		describeInput = &ec2.DescribeInstancesInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{"running"}),
+				},
+				{
+					Name:   aws.String("private-dns-name"),
+					Values: aws.StringSlice([]string{node}),
+				},
+			},
+		}
+		output, err = w.EC2.DescribeInstances(describeInput)
+		if err != nil {
+			log.Errorf("failed to list cluster ec2 instances, %v", err)
+			return err
+		}
+
+		for _, reservation := range output.Reservations {
+			for _, realInstance := range reservation.Instances {
+				realInstanceId := aws.StringValue(realInstance.InstanceId)
+				log.Infof("node %v is referencing terminated instance %v, actual instance is %v", node, instance, realInstanceId)
+				ctx.GhostInstances[node] = realInstanceId
+			}
+		}
+	}
+
+	if ctx.ReapGhost {
+		for node, instance := range ctx.GhostInstances {
+			log.Infof("node %v is drain-reapable, referencing terminated instance %v !! State = Ghost", node, instance)
+			ctx.addDrainable(node, instance)
+			ctx.addReapable(node, instance)
 		}
 	}
 	return nil

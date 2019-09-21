@@ -55,40 +55,75 @@ func (m *stubEC2) DescribeTags(input *ec2.DescribeTagsInput) (*ec2.DescribeTagsO
 }
 
 func (m *stubEC2) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
-	var filterKey, filterValue string
-	var filteredInstances []*ec2.Instance
-
+	var tagFilterKey, tagFilterValue, instanceStateFilter, instanceIdFilter, privateDnsFilter string
+	var filteredInstances, outputInstances []*ec2.Instance
+	outputInstances = m.FakeInstances
 	if len(input.Filters) != 0 {
 		for _, filter := range input.Filters {
 			if aws.StringValue(filter.Name) == "tag-key" {
-				filterKey = aws.StringValue(filter.Values[0])
+				tagFilterKey = aws.StringValue(filter.Values[0])
 			} else if aws.StringValue(filter.Name) == "tag-value" {
-				filterValue = aws.StringValue(filter.Values[0])
+				tagFilterValue = aws.StringValue(filter.Values[0])
+			}
+
+			if aws.StringValue(filter.Name) == "instance-state-name" {
+				instanceStateFilter = aws.StringValue(filter.Values[0])
+			}
+
+			if aws.StringValue(filter.Name) == "instance-id" {
+				instanceIdFilter = aws.StringValue(filter.Values[0])
+			}
+
+			if aws.StringValue(filter.Name) == "private-dns-name" {
+				privateDnsFilter = aws.StringValue(filter.Values[0])
 			}
 		}
+
 		for _, instance := range m.FakeInstances {
-			for _, tag := range instance.Tags {
-				if aws.StringValue(tag.Key) == filterKey && aws.StringValue(tag.Value) == filterValue {
-					filteredInstances = append(filteredInstances, instance)
+			var match bool
+			var matchCount int
+
+			if instanceIdFilter != "" {
+				if aws.StringValue(instance.InstanceId) == instanceIdFilter {
+					match = true
+					matchCount++
 				}
 			}
+
+			if instanceStateFilter != "" {
+				if aws.StringValue(instance.State.Name) == instanceStateFilter {
+					match = true
+					matchCount++
+				}
+			}
+
+			if privateDnsFilter != "" {
+				if aws.StringValue(instance.PrivateDnsName) == privateDnsFilter {
+					match = true
+					matchCount++
+				}
+			}
+
+			for _, tag := range instance.Tags {
+				if aws.StringValue(tag.Key) == tagFilterKey && aws.StringValue(tag.Value) == tagFilterValue {
+					match = true
+					matchCount += 2
+				}
+			}
+			if match && matchCount == len(input.Filters) {
+				filteredInstances = append(filteredInstances, instance)
+			}
 		}
-		return &ec2.DescribeInstancesOutput{
-			Reservations: []*ec2.Reservation{
-				{
-					Instances: filteredInstances,
-				},
-			},
-		}, nil
-	} else {
-		return &ec2.DescribeInstancesOutput{
-			Reservations: []*ec2.Reservation{
-				{
-					Instances: m.FakeInstances,
-				},
-			},
-		}, nil
+
+		outputInstances = filteredInstances
 	}
+	return &ec2.DescribeInstancesOutput{
+		Reservations: []*ec2.Reservation{
+			{
+				Instances: outputInstances,
+			},
+		},
+	}, nil
 }
 
 func (m *stubASG) DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
@@ -135,6 +170,7 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.AgeReapThrottle = 0
 	ctx.DrainableInstances = make(map[string]string)
 	ctx.ReapableInstances = make(map[string]string)
+	ctx.GhostInstances = make(map[string]string)
 	ctx.ClusterInstancesData = make(map[string]float64)
 	ctx.NodeInstanceIDs = make(map[string]string)
 	ctx.AgeDrainReapableInstances = make([]AgeDrainReapableInstance, 0)
@@ -364,6 +400,7 @@ func runFakeReaper(ctx *ReaperContext, awsAuth ReaperAwsAuth) {
 	ctx.scan(awsAuth)
 	ctx.deriveFlappyDrainReapableNodes()
 	ctx.deriveAgeDrainReapableNodes()
+	ctx.deriveGhostDrainReapableNodes(awsAuth)
 	ctx.deriveReapableNodes()
 	ctx.reapUnhealthyNodes(awsAuth)
 	ctx.reapOldNodes(awsAuth)
@@ -1194,6 +1231,9 @@ func TestUnjoinedPositive(t *testing.T) {
 						Value: aws.String("my-cluster"),
 					},
 				},
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
+				},
 			},
 			{
 				InstanceId: aws.String("i-404040404040"),
@@ -1203,6 +1243,9 @@ func TestUnjoinedPositive(t *testing.T) {
 						Key:   aws.String("KubernetesCluster"),
 						Value: aws.String("different-cluster"),
 					},
+				},
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
 				},
 			},
 		},
@@ -1251,6 +1294,9 @@ func TestUnjoinedNegative(t *testing.T) {
 						Value: aws.String("my-cluster"),
 					},
 				},
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
+				},
 			},
 			{
 				InstanceId: aws.String("i-404040404040"),
@@ -1261,12 +1307,65 @@ func TestUnjoinedNegative(t *testing.T) {
 						Value: aws.String("my-cluster"),
 					},
 				},
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
+				},
 			},
 		},
 		FakeReaper:         reaper,
 		ExpectedUnready:    0,
 		ExpectedReapable:   0,
 		ExpectedTerminated: 0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestGhostPositive(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapGhost = true
+	testCase := ReaperUnitTest{
+		TestDescription: "Ghost - nodes should be removed if they referencing a termianted instance-id",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-10-10-10-10",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-101010101010",
+			},
+			{
+				nodeName:   "node-20-20-20-20",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-202020202020",
+			},
+		},
+		FakeInstances: []*ec2.Instance{
+			{
+				InstanceId: aws.String("i-101010101010"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-100) * time.Minute)),
+				State: &ec2.InstanceState{
+					Name: aws.String("terminated"),
+				},
+			},
+			{
+				PrivateDnsName: aws.String("node-10-10-10-10"),
+				InstanceId:     aws.String("i-303030303030"),
+				LaunchTime:     aws.Time(time.Now().Add(time.Duration(-10) * time.Minute)),
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
+				},
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    0,
+		ExpectedDrainable:  1,
+		ExpectedDrained:    1,
+		ExpectedReapable:   1,
+		ExpectedTerminated: 1,
 	}
 	testCase.Run(t, false)
 }
