@@ -54,6 +54,43 @@ func (m *stubEC2) DescribeTags(input *ec2.DescribeTagsInput) (*ec2.DescribeTagsO
 	return output, nil
 }
 
+func (m *stubEC2) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	var filterKey, filterValue string
+	var filteredInstances []*ec2.Instance
+
+	if len(input.Filters) != 0 {
+		for _, filter := range input.Filters {
+			if aws.StringValue(filter.Name) == "tag-key" {
+				filterKey = aws.StringValue(filter.Values[0])
+			} else if aws.StringValue(filter.Name) == "tag-value" {
+				filterValue = aws.StringValue(filter.Values[0])
+			}
+		}
+		for _, instance := range m.FakeInstances {
+			for _, tag := range instance.Tags {
+				if aws.StringValue(tag.Key) == filterKey && aws.StringValue(tag.Value) == filterValue {
+					filteredInstances = append(filteredInstances, instance)
+				}
+			}
+		}
+		return &ec2.DescribeInstancesOutput{
+			Reservations: []*ec2.Reservation{
+				{
+					Instances: filteredInstances,
+				},
+			},
+		}, nil
+	} else {
+		return &ec2.DescribeInstancesOutput{
+			Reservations: []*ec2.Reservation{
+				{
+					Instances: m.FakeInstances,
+				},
+			},
+		}, nil
+	}
+}
+
 func (m *stubASG) DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
 	instances := []*autoscaling.Instance{}
 
@@ -98,6 +135,8 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.AgeReapThrottle = 0
 	ctx.DrainableInstances = make(map[string]string)
 	ctx.ReapableInstances = make(map[string]string)
+	ctx.ClusterInstancesData = make(map[string]float64)
+	ctx.NodeInstanceIDs = make(map[string]string)
 	ctx.AgeDrainReapableInstances = make([]AgeDrainReapableInstance, 0)
 	ctx.AgeKillOrder = make([]string, 0)
 	// Default Flags
@@ -107,6 +146,8 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.ReapUnknown = true
 	ctx.ReapUnready = true
 	ctx.ReapFlappy = true
+	ctx.ReapGhost = true
+	ctx.ReapUnjoined = false
 	ctx.AsgValidation = true
 	ctx.FlapCount = 4
 	ctx.TimeToReap = 5
@@ -320,7 +361,7 @@ func createFakePod(c FakePod, ctx *ReaperContext) {
 }
 
 func runFakeReaper(ctx *ReaperContext, awsAuth ReaperAwsAuth) {
-	ctx.scan()
+	ctx.scan(awsAuth)
 	ctx.deriveFlappyDrainReapableNodes()
 	ctx.deriveAgeDrainReapableNodes()
 	ctx.deriveReapableNodes()
@@ -328,9 +369,9 @@ func runFakeReaper(ctx *ReaperContext, awsAuth ReaperAwsAuth) {
 	ctx.reapOldNodes(awsAuth)
 }
 
-func createFakeAwsAuth(a FakeASG) ReaperAwsAuth {
+func createFakeAwsAuth(a FakeASG, i []*ec2.Instance) ReaperAwsAuth {
 	awsAuth := ReaperAwsAuth{
-		EC2: &stubEC2{AsgNameTag: a.Name},
+		EC2: &stubEC2{AsgNameTag: a.Name, FakeInstances: i},
 		ASG: &stubASG{AsgName: a.Name,
 			HealthyInstances:   a.Healthy,
 			UnhealthyInstances: a.Unhealthy,
@@ -341,7 +382,7 @@ func createFakeAwsAuth(a FakeASG) ReaperAwsAuth {
 }
 
 func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
-	awsAuth := createFakeAwsAuth(u.InstanceGroup)
+	awsAuth := createFakeAwsAuth(u.InstanceGroup, u.FakeInstances)
 	createFakeNodes(u.Nodes, u.FakeReaper)
 	createFakeEvents(u.Events, u.FakeReaper)
 	start := time.Now()
@@ -391,6 +432,7 @@ type ReaperUnitTest struct {
 	Events                  []FakeEvent
 	InstanceGroup           FakeASG
 	FakeReaper              *ReaperContext
+	FakeInstances           []*ec2.Instance
 	ExpectedTerminated      int
 	ExpectedDrained         int
 	ExpectedReapable        int
@@ -436,7 +478,8 @@ type FakeEvent struct {
 
 type stubEC2 struct {
 	ec2iface.EC2API
-	AsgNameTag string
+	AsgNameTag    string
+	FakeInstances []*ec2.Instance
 }
 
 type stubASG struct {
@@ -1110,6 +1153,120 @@ func TestMaxKill(t *testing.T) {
 		ExpectedUnready:    2,
 		ExpectedReapable:   2,
 		ExpectedTerminated: 1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestUnjoinedPositive(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnjoined = true
+	reaper.ReapUnjoinedThresholdMinutes = 15
+	reaper.ReapUnjoinedKey = "KubernetesCluster"
+	reaper.ReapUnjoinedValue = "my-cluster"
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Unjoined - nodes should be terminated if they are unjoined",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-10-10-10-10",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-101010101010",
+			},
+			{
+				nodeName:   "node-20-20-20-20",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-202020202020",
+			},
+		},
+		FakeInstances: []*ec2.Instance{
+			{
+				InstanceId: aws.String("i-303030303030"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-30) * time.Minute)),
+				Tags: []*ec2.Tag{
+					{
+						Key:   aws.String("KubernetesCluster"),
+						Value: aws.String("my-cluster"),
+					},
+				},
+			},
+			{
+				InstanceId: aws.String("i-404040404040"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-30) * time.Minute)),
+				Tags: []*ec2.Tag{
+					{
+						Key:   aws.String("KubernetesCluster"),
+						Value: aws.String("different-cluster"),
+					},
+				},
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    0,
+		ExpectedReapable:   1,
+		ExpectedTerminated: 1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestUnjoinedNegative(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnjoined = true
+	reaper.ReapUnjoinedThresholdMinutes = 15
+	reaper.ReapUnjoinedKey = "KubernetesCluster"
+	reaper.ReapUnjoinedValue = "my-cluster"
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Unjoined - nodes should not be terminated if they are unjoined but do not meet threshold",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-10-10-10-10",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-101010101010",
+			},
+			{
+				nodeName:   "node-20-20-20-20",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-303030303030",
+			},
+		},
+		FakeInstances: []*ec2.Instance{
+			{
+				InstanceId: aws.String("i-303030303030"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-30) * time.Minute)),
+				Tags: []*ec2.Tag{
+					{
+						Key:   aws.String("KubernetesCluster"),
+						Value: aws.String("my-cluster"),
+					},
+				},
+			},
+			{
+				InstanceId: aws.String("i-404040404040"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-10) * time.Minute)),
+				Tags: []*ec2.Tag{
+					{
+						Key:   aws.String("KubernetesCluster"),
+						Value: aws.String("my-cluster"),
+					},
+				},
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    0,
+		ExpectedReapable:   0,
+		ExpectedTerminated: 0,
 	}
 	testCase.Run(t, false)
 }

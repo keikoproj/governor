@@ -16,6 +16,7 @@ limitations under the License.
 package nodereaper
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -42,12 +43,16 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.ReapUnready = args.ReapUnready
 	ctx.ReapUnknown = args.ReapUnknown
 	ctx.ReapFlappy = args.ReapFlappy
+	ctx.ReapGhost = args.ReapGhost
+	ctx.ReapUnjoined = args.ReapUnjoined
 	ctx.ReapThrottle = args.ReapThrottle
 	ctx.AgeReapThrottle = args.AgeReapThrottle
 	ctx.SoftReap = args.SoftReap
 	ctx.AsgValidation = args.AsgValidation
 	ctx.ReapableInstances = make(map[string]string)
 	ctx.DrainableInstances = make(map[string]string)
+	ctx.ClusterInstancesData = make(map[string]float64)
+	ctx.NodeInstanceIDs = make(map[string]string)
 	ctx.AgeDrainReapableInstances = make([]AgeDrainReapableInstance, 0)
 	ctx.AgeKillOrder = make([]string, 0)
 	ctx.EC2Region = args.EC2Region
@@ -101,8 +106,33 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 		return err
 	}
 	ctx.TimeToReap = args.ReapAfter
+
+	if args.ReapUnjoined {
+		if args.ReapUnjoinedThresholdMinutes < 10 {
+			err := fmt.Errorf("--reap-after must be set to a number greater than or equal to 10")
+			log.Errorln(err)
+			return err
+		}
+
+		if args.ReapUnjoinedKey == "" {
+			err := fmt.Errorf("--reap-unjoined-tag-key must be set to an ec2 tag key")
+			log.Errorln(err)
+			return err
+		}
+		ctx.ReapUnjoinedKey = args.ReapUnjoinedKey
+
+		if args.ReapUnjoinedValue == "" {
+			err := fmt.Errorf("--reap-unjoined-tag-value must be set to an ec2 tag value")
+			log.Errorln(err)
+			return err
+		}
+		ctx.ReapUnjoinedValue = args.ReapUnjoinedValue
+	}
+
 	log.Infof("Reap Unknown = %t, threshold = %v minutes", ctx.ReapUnknown, ctx.TimeToReap)
 	log.Infof("Reap Unready = %t, threshold = %v minutes", ctx.ReapUnready, ctx.TimeToReap)
+	log.Infof("Reap Ghost = %t, threshold = immediate", ctx.ReapGhost)
+	log.Infof("Reap Unjoined = %t, threshold = %v minutes by tag %v=%v", ctx.ReapUnjoined, ctx.ReapUnjoinedThresholdMinutes, ctx.ReapUnjoinedKey, ctx.ReapUnjoinedValue)
 
 	if !ctx.SoftReap {
 		log.Warnf("--soft-reap is off !! will not consider pods when reaping")
@@ -182,7 +212,7 @@ func Run(args *Args) error {
 	awsAuth.ASG = autoscaling.New(sess)
 
 	log.Infoln("starting api scanner")
-	err = ctx.scan()
+	err = ctx.scan(awsAuth)
 	if err != nil {
 		log.Errorf("failed to scan nodes, %v", err)
 		return err
@@ -291,6 +321,19 @@ func (ctx *ReaperContext) deriveFlappyDrainReapableNodes() error {
 
 // Handle Unknown/NotReady reapable nodes
 func (ctx *ReaperContext) deriveReapableNodes() error {
+
+	log.Infoln("scanning for unjoined nodes")
+	for instanceID, minutesElapsed := range ctx.ClusterInstancesData {
+		// if a cluster instance exist which does not map to an existing node
+		if _, ok := ctx.NodeInstanceIDs[instanceID]; !ok {
+			if minutesElapsed > float64(ctx.ReapUnjoinedThresholdMinutes) {
+				log.Infof("instance '%v' has been running for %f minutes but is not joined to cluster", instanceID, minutesElapsed)
+				unjoinedNodeName := fmt.Sprintf("unjoined-%v", instanceID)
+				ctx.addReapable(unjoinedNodeName, instanceID)
+			}
+		}
+	}
+
 	log.Infoln("scanning for dead nodes")
 	for _, node := range ctx.UnreadyNodes {
 		nodeInstanceID := getNodeInstanceID(&node)
@@ -479,7 +522,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 	return nil
 }
 
-func (ctx *ReaperContext) scan() error {
+func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 	corev1 := ctx.KubernetesClient.CoreV1()
 
 	if ctx.ReapOld {
@@ -532,11 +575,46 @@ func (ctx *ReaperContext) scan() error {
 
 	log.Infof("found %v nodes, %v pods, and %v events", len(ctx.AllNodes), len(ctx.AllPods), len(ctx.AllEvents))
 	for _, node := range nodeList.Items {
+		ctx.NodeInstanceIDs[getNodeInstanceID(&node)] = node.Name
 		if nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node) {
 			log.Infof("node %v is not ready", node.ObjectMeta.Name)
 			ctx.UnreadyNodes = append(ctx.UnreadyNodes, node)
 		}
 	}
+
+	if ctx.ReapUnjoined {
+		describeInput := &ec2.DescribeInstancesInput{
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("tag-key"),
+					Values: aws.StringSlice([]string{ctx.ReapUnjoinedKey}),
+				},
+				{
+					Name:   aws.String("tag-value"),
+					Values: aws.StringSlice([]string{ctx.ReapUnjoinedValue}),
+				},
+			},
+		}
+		output, err := w.EC2.DescribeInstances(describeInput)
+		if err != nil {
+			log.Errorf("failed to list cluster ec2 instances, %v", err)
+			return err
+		}
+		for _, reservation := range output.Reservations {
+			for _, instance := range reservation.Instances {
+				ctx.ClusterInstances = append(ctx.ClusterInstances, instance)
+				timeSinceLaunch := time.Since(aws.TimeValue(instance.LaunchTime)).Minutes()
+				instanceID := aws.StringValue(instance.InstanceId)
+				ctx.ClusterInstancesData[instanceID] = timeSinceLaunch
+			}
+		}
+
+		if len(ctx.ClusterInstances) == 0 {
+			err := errors.New("failed to list cluster ec2 instances")
+			return err
+		}
+	}
+
 	return nil
 }
 
