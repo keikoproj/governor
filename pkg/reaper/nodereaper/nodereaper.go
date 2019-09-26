@@ -110,7 +110,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 
 	if args.ReapUnjoined {
 		if args.ReapUnjoinedThresholdMinutes < 10 {
-			err := fmt.Errorf("--reap-after must be set to a number greater than or equal to 10")
+			err := fmt.Errorf("--reap-unjoined-threshold-minutes must be set to a number greater than or equal to 10")
 			log.Errorln(err)
 			return err
 		}
