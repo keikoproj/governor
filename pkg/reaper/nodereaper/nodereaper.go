@@ -331,54 +331,19 @@ func (ctx *ReaperContext) deriveFlappyDrainReapableNodes() error {
 func (ctx *ReaperContext) deriveGhostDrainReapableNodes(w ReaperAwsAuth) error {
 	log.Infoln("scanning for ghost drain-reapable nodes")
 	for instance, node := range ctx.NodeInstanceIDs {
-		// find ghost instance
-		describeInput := &ec2.DescribeInstancesInput{
-			Filters: []*ec2.Filter{
-				{
-					Name:   aws.String("instance-state-name"),
-					Values: aws.StringSlice([]string{"terminated"}),
-				},
-				{
-					Name:   aws.String("instance-id"),
-					Values: aws.StringSlice([]string{instance}),
-				},
-			},
-		}
-		output, err := w.EC2.DescribeInstances(describeInput)
-		if err != nil {
-			log.Errorf("failed to list cluster ec2 instances, %v", err)
-			return err
-		}
-		if len(output.Reservations[0].Instances) == 0 {
+		// skip iteration if instance ID is not a terminated instance
+		if !isTerminated(ctx.AllInstances, instance) {
 			continue
 		}
-
 		// find the real instance id by node name
-		describeInput = &ec2.DescribeInstancesInput{
-			Filters: []*ec2.Filter{
-				{
-					Name:   aws.String("instance-state-name"),
-					Values: aws.StringSlice([]string{"running"}),
-				},
-				{
-					Name:   aws.String("private-dns-name"),
-					Values: aws.StringSlice([]string{node}),
-				},
-			},
-		}
-		output, err = w.EC2.DescribeInstances(describeInput)
-		if err != nil {
-			log.Errorf("failed to list cluster ec2 instances, %v", err)
-			return err
-		}
+		realInstanceID := getInstanceIDByPrivateDNS(ctx.AllInstances, node)
 
-		for _, reservation := range output.Reservations {
-			for _, realInstance := range reservation.Instances {
-				realInstanceId := aws.StringValue(realInstance.InstanceId)
-				log.Infof("node %v is referencing terminated instance %v, actual instance is %v", node, instance, realInstanceId)
-				ctx.GhostInstances[node] = realInstanceId
-			}
+		// skip iteration if no running instance with nodeName was found
+		if realInstanceID == "" {
+			continue
 		}
+		log.Infof("node %v is referencing terminated instance %v, actual instance is %v", node, instance, realInstanceID)
+		ctx.GhostInstances[node] = realInstanceID
 	}
 
 	if ctx.ReapGhost {
@@ -651,6 +616,17 @@ func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 		if nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node) {
 			log.Infof("node %v is not ready", node.ObjectMeta.Name)
 			ctx.UnreadyNodes = append(ctx.UnreadyNodes, node)
+		}
+	}
+
+	output, err := w.EC2.DescribeInstances(&ec2.DescribeInstancesInput{})
+	if err != nil {
+		log.Errorf("failed to list ec2 instances, %v", err)
+		return err
+	}
+	for _, reservation := range output.Reservations {
+		for _, instance := range reservation.Instances {
+			ctx.AllInstances = append(ctx.AllInstances, instance)
 		}
 	}
 

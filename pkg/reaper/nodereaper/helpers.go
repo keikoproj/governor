@@ -353,3 +353,27 @@ func allNodesAreReady(kubeClient kubernetes.Interface) (bool, error) {
 	}
 	return true, nil
 }
+
+func isTerminated(instances []*ec2.Instance, instanceID string) bool {
+	var terminatedStateName = "terminated"
+	for _, instance := range instances {
+		if aws.StringValue(instance.InstanceId) == instanceID {
+			if aws.StringValue(instance.State.Name) == terminatedStateName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func getInstanceIDByPrivateDNS(instances []*ec2.Instance, dnsName string) string {
+	var runningStateName = "running"
+	for _, instance := range instances {
+		if aws.StringValue(instance.PrivateDnsName) == dnsName {
+			if aws.StringValue(instance.State.Name) == runningStateName {
+				return aws.StringValue(instance.InstanceId)
+			}
+		}
+	}
+	return ""
+}

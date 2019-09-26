@@ -90,6 +90,7 @@ type ReaperContext struct {
 	AllNodes                  []v1.Node
 	AllPods                   []v1.Pod
 	AllEvents                 []v1.Event
+	AllInstances              []*ec2.Instance
 	ClusterInstances          []*ec2.Instance
 	ClusterInstancesData      map[string]float64
 	GhostInstances            map[string]string
