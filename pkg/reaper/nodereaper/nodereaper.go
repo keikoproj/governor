@@ -91,10 +91,10 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 		}
 		ctx.ReapOldThresholdMinutes = args.ReapOldThresholdMinutes
 		log.Infof("Reap Old = %t, threshold = %v minutes", ctx.ReapOld, ctx.ReapOldThresholdMinutes)
-	}
 
-	if ctx.ReapOldThresholdMinutes < 10080 {
-		log.Warnf("--reap-old-threshold-minutes is set to %v - reaping nodes younger than 7 days is not recommended", ctx.ReapOldThresholdMinutes)
+		if ctx.ReapOldThresholdMinutes < 10080 {
+			log.Warnf("--reap-old-threshold-minutes is set to %v - reaping nodes younger than 7 days is not recommended", ctx.ReapOldThresholdMinutes)
+		}
 	}
 
 	if !ctx.ReapUnready && !ctx.ReapUnknown && !ctx.ReapFlappy && !ctx.ReapOld {
