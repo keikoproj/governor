@@ -94,11 +94,23 @@ spec:
             # Only reap nodes without active pods
             - --soft-reap=true
             # Unknown nodes are reapable
-            - --reap-unknown
+            - --reap-unknown=true
             # NotReady nodes are reapable
-            - --reap-unready
+            - --reap-unready=true
             # Wait 180 seconds after each unhealthy node termination
             - --reap-throttle=180
+            # Nodes with an invalid/incorrect instance-id are reapable
+            - --reap-ghost=true
+            # Nodes which fail to join the cluster are reapable
+            - --reap-unjoined=true
+            # Nodes should join the cluster within 15 mintues
+            - --reap-unjoined-threshold-minutes=15
+            # Tag key and value used to identify an unjoined node, this is an EC2 tag that should
+            # exist on the instances as they are launched (part of ASG), be careful not to get this
+            # wrong as it can cause termination of other instances if they are not detected as nodes
+            # in the cluster
+            - --reap-unjoined-tag-key=KubernetesCluster
+            - --reap-unjoined-tag-value=my-cluster-name
             # Old nodes are reapable
             - --reap-old
             # Nodes older than 30 days are considered age-reapable

@@ -36,8 +36,7 @@ kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governo
 
 ## Release History
 
-* 0.1.0
-  * Release alpha version of governor
+Please see [CHANGELOG.md](.github/CHANGELOG.md).
 
 ## ❤ Contributing ❤
 
