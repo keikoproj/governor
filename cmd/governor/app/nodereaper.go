@@ -50,6 +50,8 @@ func init() {
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.SoftReap, "soft-reap", true, "Will not terminate nodes with running pods")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.ReapUnknown, "reap-unknown", true, "Terminate nodes where State = Unknown")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.ReapUnready, "reap-unready", true, "Terminate nodes where State = NotReady")
+	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.ReapGhost, "reap-ghost", true, "Prune nodes who's instances are already terminated")
+	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.ReapUnjoined, "reap-unjoined", false, "Reap nodes which fail to join the cluster")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.ReapFlappy, "reap-flappy", true, "Terminate nodes which have flappy readiness")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.AsgValidation, "asg-validation", true, "Validate AutoScalingGroup's Min and Desired match before reaping")
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.FlapCount, "flap-count", 5, "Only reap instances which have flapped atleast N times over the last hour")
@@ -57,4 +59,8 @@ func init() {
 	nodeReapCmd.Flags().IntVar(&nodeReaperArgs.MaxKill, "max-kill-nodes", 1, "Kill up to N nodes per job run, considering throttle wait times")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.AgeReapThrottle, "reap-old-throttle", 1800, "Post terminate wait in seconds for old nodes")
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapOldThresholdMinutes, "reap-old-threshold-minutes", 43200, "Reap N minute old nodes")
+	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapUnjoinedThresholdMinutes, "reap-unjoined-threshold-minutes", 15, "Reap N minute old nodes")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ReapUnjoinedKey, "reap-unjoined-tag-key", "", "BE CAREFUL! EC2 tag key that identfies a joining node")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ReapUnjoinedValue, "reap-unjoined-tag-value", "", "BE CAREFUL! EC2 tag value that identfies a joining node")
+
 }
