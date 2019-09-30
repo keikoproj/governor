@@ -209,6 +209,14 @@ Master nodes are also reaped but only if there are atleast 3 healthy masters in 
 
 The use of `--max-kill-nodes` can also help limit the number of nodes killed per node-reaper run, but regardless it will wait the number of seconds mentioned in `--reap-old-throttle` & `--reap-throttle` after every kill.
 
+### Reaping "Ghost" Nodes
+
+Ghost nodes are nodes which point to an instance-id which is invalid or already terminated. This issue has been seen in certain clusters which have a lot of churn, having low number of available IP addresses makes this more frequent, but essentially an EC2 instance is terminated for some reason, and before the node object get's removed, a new node joins with the same IP address (which assumes the same node name), this leaves the node object around, however it's `ProviderID` will reference a terminated instance ID. this can cause major problems with other controllers which rely on this value such as `alb-ingress-controller`. Enabling this feature will mean node-reaper will check that nodes `ProviderID` references a running EC2 instance, otherwise it will terminated the node. This feature is enabled by default and can be disabled by setting `--reap-ghost=false`.
+
+### Reaping Unjoined Nodes
+
+Unjoined nodes are nodes which fail to join the cluster and remain unjoined while taking capacity from the scaling groups. By default this feature is not enabled, but can be enabled by setting `--reap-unjoined=true`, you must also set `--reap-unjoined-threshold-minutes` which is the number of minutes passed since EC2 launch time to consider a node unjoined (we recommend setting a relatively high number here, e.g. 15), also `--reap-unjoined-tag-key` and `--reap-unjoined-tag-value` are required in order to identify the instances which failed to join, and should match an EC2 tag on the cluster nodes. when this is enabled, node-reaper will actively look at all EC2 instances with the mentioned key/value tag, and make sure they are joined in the cluster as nodes by looking at their `ProviderID`, if a matching node is not found and the EC2 instance has been up for more than the configured thershold, the instance will be terminated.
+
 ### Example
 
 ```text
