@@ -114,6 +114,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 			log.Errorln(err)
 			return err
 		}
+		ctx.ReapUnjoinedThresholdMinutes = args.ReapUnjoinedThresholdMinutes
 
 		if args.ReapUnjoinedKey == "" {
 			err := fmt.Errorf("--reap-unjoined-tag-key must be set to an ec2 tag key")
