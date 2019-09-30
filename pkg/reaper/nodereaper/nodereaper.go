@@ -114,6 +114,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 			log.Errorln(err)
 			return err
 		}
+		ctx.ReapUnjoinedThresholdMinutes = args.ReapUnjoinedThresholdMinutes
 
 		if args.ReapUnjoinedKey == "" {
 			err := fmt.Errorf("--reap-unjoined-tag-key must be set to an ec2 tag key")
@@ -640,6 +641,10 @@ func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 				{
 					Name:   aws.String("tag-value"),
 					Values: aws.StringSlice([]string{ctx.ReapUnjoinedValue}),
+				},
+				{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{"running"}),
 				},
 			},
 		}
