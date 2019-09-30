@@ -641,6 +641,10 @@ func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 					Name:   aws.String("tag-value"),
 					Values: aws.StringSlice([]string{ctx.ReapUnjoinedValue}),
 				},
+				{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{"running"}),
+				},
 			},
 		}
 		output, err := w.EC2.DescribeInstances(describeInput)
