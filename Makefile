@@ -15,7 +15,7 @@ IMAGE ?= governor:latest
 all: clean build test
 
 build:
-	CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/keikoproj/governor/cmd/governor
+	CGO_ENABLED=0 go build ${LDFLAGS} -mod=vendor -o _output/bin/governor cmd/governor/governor.go
 
 docker-build:
 	docker build -t $(IMAGE) .
@@ -28,11 +28,11 @@ clean:
 	rm -rf _output
 
 test:
-	go test -v ./... -coverprofile ./coverage.txt
+	go test -mod=vendor -v ./... -coverprofile ./coverage.txt
 
 vtest:
-	go test -v ./... -coverprofile ./coverage.txt --logging-enabled
+	go test -mod=vendor -v ./... -coverprofile ./coverage.txt --logging-enabled
 
 coverage:
-	go test -coverprofile ./coverage.txt -v ./...
+	go test -mod=vendor -coverprofile ./coverage.txt -v ./...
 	go tool cover -html=./coverage.txt -o _output/cover.html
