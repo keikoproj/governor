@@ -1,0 +1,6 @@
+coverage.txt
+cover.html
+_output/*
+bin
+bin/*
+.DS_Store
