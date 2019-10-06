@@ -1,7 +1,7 @@
 language: go
 
 go:
-- 1.12.x
+  - 1.13.x
 
 git:
   depth: 1
@@ -10,16 +10,15 @@ install: skip
 
 jobs:
   include:
-
     - stage: unit-test
       script:
-      - go test -v ./... -coverprofile ./coverage.txt
-      - bash <(curl -s https://codecov.io/bash)
+        - go test -mod=vendor -v ./... -coverprofile ./coverage.txt
+        - bash <(curl -s https://codecov.io/bash)
 
     - stage: publish-image
       if: type = push
       script:
-      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-      - export IMAGE=keikoproj/governor:$TRAVIS_BRANCH
-      - make docker-build
-      - make docker-push
+        - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+        - export IMAGE=keikoproj/governor:$TRAVIS_BRANCH
+        - make docker-build
+        - make docker-push
