@@ -26,7 +26,7 @@ import (
 	"github.com/Pallinder/go-randomdata"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/keikoproj/governor/pkg/reaper/common"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -134,9 +134,7 @@ func createFakePods(pods []FakePod, ctx *ReaperContext) {
 func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 	createFakePods(u.Pods, u.FakeReaper)
 	start := time.Now()
-	u.FakeReaper.getTerminatingPods()
-	u.FakeReaper.deriveStuckPods()
-	u.FakeReaper.reapStuckPods()
+	Run(u.FakeReaper)
 	secondsSince := int(time.Since(start).Seconds())
 
 	if timeTest {
@@ -325,7 +323,7 @@ func TestValidateArgumentsPositive(t *testing.T) {
 		SoftReap:  true,
 		DryRun:    true,
 	}
-	reaper.validateArguments(reaperArgs)
+	reaper.ValidateArguments(reaperArgs)
 	if reaper.TimeToReap != reaperArgs.ReapAfter {
 		t.Fatalf("expected TimeToReap: %v, got: %v", reaperArgs.ReapAfter, reaper.TimeToReap)
 	}
@@ -345,7 +343,7 @@ func TestValidateArgumentsNegative(t *testing.T) {
 		SoftReap:  false,
 		DryRun:    false,
 	}
-	err := reaper.validateArguments(reaperArgs)
+	err := reaper.ValidateArguments(reaperArgs)
 	if err == nil {
 		t.Fatalf("expected Error: %v, got: %v", "--reap-after must be set to a number greater than or equal to 1", err)
 	}
