@@ -25,13 +25,18 @@ import (
 
 var podReaperArgs podreaper.Args
 
-// reapCmd represents the reap command
+// podReapCmd represents the reap command
 var podReapCmd = &cobra.Command{
 	Use:   "pod",
 	Short: "pod invokes the pod reaper",
 	Long:  `reap finds and force deletes pods stuck in Terminating`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := podreaper.Run(&podReaperArgs); err != nil {
+		ctx := &podreaper.ReaperContext{}
+		if err := ctx.ValidateArguments(&podReaperArgs); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		if err := podreaper.Run(ctx); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}

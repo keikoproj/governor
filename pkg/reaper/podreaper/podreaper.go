@@ -29,19 +29,12 @@ import (
 var log = logrus.New()
 
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
-func Run(args *Args) error {
+func Run(ctx *ReaperContext) error {
 	log.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
-	ctx := &ReaperContext{}
 
-	err := ctx.validateArguments(args)
-	if err != nil {
-		log.Errorf("failed to validate commandline arguments, %v", err)
-		return err
-	}
-
-	err = ctx.getTerminatingPods()
+	err := ctx.getTerminatingPods()
 	if err != nil {
 		log.Errorf("failed to get terminating pods, %v", err)
 		return err
@@ -173,7 +166,7 @@ func (ctx *ReaperContext) getTerminatingPods() error {
 	return nil
 }
 
-func (ctx *ReaperContext) validateArguments(args *Args) error {
+func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.StuckPods = make(map[string]string)
 	ctx.DryRun = args.DryRun
 
