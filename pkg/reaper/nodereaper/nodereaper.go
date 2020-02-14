@@ -496,7 +496,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			}
 
 			if err := ctx.annotateNode(instance.NodeName, terminatingAnnotationKey, "true"); err != nil {
-				log.Warn("failed to add terminating annotation on node '%v'")
+				log.Warnf("failed to add terminating annotation on node '%v'", instance.NodeName)
 			}
 
 			// Throttle deletion
@@ -557,7 +557,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 
 			if err := ctx.annotateNode(node, terminatingAnnotationKey, "true"); err != nil {
-				log.Warn("failed to add terminating annotation on node '%v'")
+				log.Warnf("failed to add terminating annotation on node '%v'", node)
 			}
 
 			// Throttle deletion
