@@ -490,11 +490,15 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping old node %v -> %v", instance.NodeName, instance.InstanceID)
-			ctx.annotateNode(instance.NodeName, terminatingAnnotationKey, "true")
 			err = terminateInstance(w.ASG, instance.InstanceID)
 			if err != nil {
 				return err
 			}
+
+			if err := ctx.annotateNode(instance.NodeName, terminatingAnnotationKey, "true"); err != nil {
+				log.Warn("failed to add terminating annotation on node '%v'")
+			}
+
 			// Throttle deletion
 			ctx.TerminatedInstances++
 			log.Infof("starting deletion throttle wait -> %vs", ctx.AgeReapThrottle)
@@ -546,11 +550,16 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping unhealthy node %v -> %v", node, instance)
-			ctx.annotateNode(node, terminatingAnnotationKey, "true")
+
 			err = terminateInstance(w.ASG, instance)
 			if err != nil {
 				return err
 			}
+
+			if err := ctx.annotateNode(node, terminatingAnnotationKey, "true"); err != nil {
+				log.Warn("failed to add terminating annotation on node '%v'")
+			}
+
 			// Throttle deletion
 			ctx.TerminatedInstances++
 			log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
