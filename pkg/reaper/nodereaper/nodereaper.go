@@ -35,6 +35,7 @@ var log = logrus.New()
 
 const (
 	ageUnreapableAnnotationKey = "governor.keikoproj.io/age-unreapable"
+	terminatingAnnotationKey   = "governor.keikoproj.io/terminating"
 )
 
 // Validate command line arguments
@@ -489,6 +490,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping old node %v -> %v", instance.NodeName, instance.InstanceID)
+			ctx.annotateNode(instance.NodeName, terminatingAnnotationKey, "true")
 			err = terminateInstance(w.ASG, instance.InstanceID)
 			if err != nil {
 				return err
@@ -544,6 +546,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping unhealthy node %v -> %v", node, instance)
+			ctx.annotateNode(node, terminatingAnnotationKey, "true")
 			err = terminateInstance(w.ASG, instance)
 			if err != nil {
 				return err
