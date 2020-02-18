@@ -35,6 +35,7 @@ var log = logrus.New()
 
 const (
 	ageUnreapableAnnotationKey = "governor.keikoproj.io/age-unreapable"
+	terminatingAnnotationKey   = "governor.keikoproj.io/terminating"
 )
 
 // Validate command line arguments
@@ -493,6 +494,11 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			if err != nil {
 				return err
 			}
+
+			if err := ctx.annotateNode(instance.NodeName, terminatingAnnotationKey, "true"); err != nil {
+				log.Warnf("failed to add terminating annotation on node '%v'", instance.NodeName)
+			}
+
 			// Throttle deletion
 			ctx.TerminatedInstances++
 			log.Infof("starting deletion throttle wait -> %vs", ctx.AgeReapThrottle)
@@ -544,10 +550,16 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping unhealthy node %v -> %v", node, instance)
+
 			err = terminateInstance(w.ASG, instance)
 			if err != nil {
 				return err
 			}
+
+			if err := ctx.annotateNode(node, terminatingAnnotationKey, "true"); err != nil {
+				log.Warnf("failed to add terminating annotation on node '%v'", node)
+			}
+
 			// Throttle deletion
 			ctx.TerminatedInstances++
 			log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
