@@ -81,6 +81,26 @@ func (ctx *ReaperContext) uncordonNode(name string, dryRun bool) error {
 	return nil
 }
 
+func (ctx *ReaperContext) terminateInstance(w autoscalingiface.AutoScalingAPI, id string, nodeName string) error {
+
+	terminateInput := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
+		InstanceId:                     &id,
+		ShouldDecrementDesiredCapacity: aws.Bool(false),
+	}
+
+	_, err := w.TerminateInstanceInAutoScalingGroup(terminateInput)
+	if err != nil {
+		return err
+	}
+
+	if err := ctx.annotateNode(nodeName, stateAnnotationKey, terminatedStateName); err != nil {
+		log.Warnf("failed to update state annotation on node '%v'", nodeName)
+	}
+
+	log.Info("instance terminate event occurred")
+	return nil
+}
+
 func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 	log.Infof("draining node %v", name)
 	drainArgs := []string{"drain", name, "--ignore-daemonsets=true", "--delete-local-data=true", "--force", "--grace-period=-1"}
@@ -90,6 +110,9 @@ func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 	if dryRun {
 		log.Warnf("dry run is on, instance not drained")
 	} else {
+		if err := ctx.annotateNode(name, stateAnnotationKey, drainingStateName); err != nil {
+			log.Warnf("failed to update state annotation on node '%v'", name)
+		}
 		_, err := runCommandWithContext(drainCommand, drainArgs, drainTimeoutSeconds)
 		if err != nil {
 			event := ctx.getUnreapableDrainFailureEvent(name, err.Error())
@@ -242,19 +265,6 @@ func nodeStateIsUnknown(n *v1.Node) bool {
 		}
 	}
 	return false
-}
-
-func terminateInstance(w autoscalingiface.AutoScalingAPI, id string) error {
-	terminateInput := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
-		InstanceId:                     &id,
-		ShouldDecrementDesiredCapacity: aws.Bool(false),
-	}
-	_, err := w.TerminateInstanceInAutoScalingGroup(terminateInput)
-	if err != nil {
-		return err
-	}
-	log.Info("instance terminate event occurred")
-	return nil
 }
 
 func getInstanceTagValue(w ec2iface.EC2API, instance string, key string) (string, error) {

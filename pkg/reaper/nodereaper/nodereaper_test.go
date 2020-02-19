@@ -527,8 +527,6 @@ type stubASG struct {
 	DesiredCapacity    int64
 }
 
-// TEST CASES
-
 func TestGetUnreadyNodesPositive(t *testing.T) {
 	reaper := newFakeReaperContext()
 	testCase := ReaperUnitTest{
