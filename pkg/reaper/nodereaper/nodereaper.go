@@ -35,7 +35,9 @@ var log = logrus.New()
 
 const (
 	ageUnreapableAnnotationKey = "governor.keikoproj.io/age-unreapable"
-	terminatingAnnotationKey   = "governor.keikoproj.io/terminating"
+	stateAnnotationKey         = "governor.keikoproj.io/state"
+	terminatedStateName        = "termination-issued"
+	drainingStateName          = "draining"
 )
 
 // Validate command line arguments
@@ -490,13 +492,9 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping old node %v -> %v", instance.NodeName, instance.InstanceID)
-			err = terminateInstance(w.ASG, instance.InstanceID)
+			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
 			if err != nil {
 				return err
-			}
-
-			if err := ctx.annotateNode(instance.NodeName, terminatingAnnotationKey, "true"); err != nil {
-				log.Warnf("failed to add terminating annotation on node '%v'", instance.NodeName)
 			}
 
 			// Throttle deletion
@@ -551,13 +549,9 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 		if !ctx.DryRun {
 			log.Infof("reaping unhealthy node %v -> %v", node, instance)
 
-			err = terminateInstance(w.ASG, instance)
+			err = ctx.terminateInstance(w.ASG, instance, node)
 			if err != nil {
 				return err
-			}
-
-			if err := ctx.annotateNode(node, terminatingAnnotationKey, "true"); err != nil {
-				log.Warnf("failed to add terminating annotation on node '%v'", node)
 			}
 
 			// Throttle deletion
