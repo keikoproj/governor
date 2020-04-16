@@ -50,8 +50,8 @@ func init() {
 	podReapCmd.Flags().BoolVar(&podReaperArgs.LocalMode, "local-mode", false, "Use cluster external auth")
 	podReapCmd.Flags().BoolVar(&podReaperArgs.DryRun, "dry-run", false, "Will not terminate pods")
 	podReapCmd.Flags().BoolVar(&podReaperArgs.SoftReap, "soft-reap", true, "Will not terminate pods with running containers")
-	podReapCmd.Flags().BoolVar(&podReaperArgs.SoftReap, "reap-completed", false, "Delete pods in completed phase")
-	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapCompletedAfter, "reap-completed-after", 0, "Reaping threshold in minutes for completed pods")
-	podReapCmd.Flags().BoolVar(&podReaperArgs.SoftReap, "reap-failed", false, "Delete pods in failed phase")
-	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapFailedAfter, "reap-failed-after", 0, "Reaping threshold in minutes for failed pods")
+	podReapCmd.Flags().BoolVar(&podReaperArgs.ReapCompleted, "reap-completed", false, "Delete pods in completed phase")
+	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapCompletedAfter, "reap-completed-after", 240, "Reaping threshold in minutes for completed pods")
+	podReapCmd.Flags().BoolVar(&podReaperArgs.ReapFailed, "reap-failed", false, "Delete pods in failed phase")
+	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapFailedAfter, "reap-failed-after", 240, "Reaping threshold in minutes for failed pods")
 }

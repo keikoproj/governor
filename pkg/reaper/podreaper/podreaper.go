@@ -229,14 +229,14 @@ func (ctx *ReaperContext) deriveCompletedPods() {
 			podNamespace      = pod.ObjectMeta.Namespace
 		)
 
-		// When softReap mode is On, only pods with 0 running containers are reapable
-		if ctx.SoftReap && podHasRunningContainers(pod) {
-			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
+		// If pod phase is not completed, skip
+		if pod.Status.Phase != v1.PodSucceeded {
 			continue
 		}
 
-		// If pod phase is not completed, skip
-		if pod.Status.Phase != v1.PodSucceeded {
+		// When softReap mode is On, only pods with 0 running containers are reapable
+		if ctx.SoftReap && podHasRunningContainers(pod) {
+			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
 			continue
 		}
 
@@ -277,14 +277,14 @@ func (ctx *ReaperContext) deriveFailedPods() {
 			podNamespace      = pod.ObjectMeta.Namespace
 		)
 
-		// When softReap mode is On, only pods with 0 running containers are reapable
-		if ctx.SoftReap && podHasRunningContainers(pod) {
-			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
+		// If pod phase is not failed, skip
+		if pod.Status.Phase != v1.PodFailed {
 			continue
 		}
 
-		// If pod phase is not failed, skip
-		if pod.Status.Phase != v1.PodFailed {
+		// When softReap mode is On, only pods with 0 running containers are reapable
+		if ctx.SoftReap && podHasRunningContainers(pod) {
+			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
 			continue
 		}
 
@@ -304,7 +304,7 @@ func (ctx *ReaperContext) deriveFailedPods() {
 
 		// Determine if pod is reapable
 		if diff > ctx.ReapFailedAfter && !ctx.isExcludedNamespace(podNamespace, ReapOperationFailed) {
-			log.Infof("%v/%v is reapable !! pod in failed state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
+			log.Infof("%v/%v is reapable !! pod in failed state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapFailedAfter)
 			ctx.FailedPods[podName] = podNamespace
 		}
 	}
