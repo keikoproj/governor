@@ -27,7 +27,7 @@ You may want to disable certain features for certain namespaces, you can annotat
 ##### Namespace annotations
 
 | Annotation Key | Annotation Value | Action
-|---|---|---|
+|:---:|:---:|:---:|
 | governor.keikoproj.io/disable-pod-reaper | "true" | disable all features
 | governor.keikoproj.io/disable-completed-pod-reap | "true" | disable completed pod reaping
 | governor.keikoproj.io/disable-completed-pod-reap | "true" | disable failed pod reaping
