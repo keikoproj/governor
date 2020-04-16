@@ -340,7 +340,7 @@ func TestReapCompletedPositive(t *testing.T) {
 			{
 				phase: v1.PodSucceeded,
 				containers: []v1.ContainerStatus{
-					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-10)*time.Minute)),
 					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
 				},
 			},
@@ -348,7 +348,7 @@ func TestReapCompletedPositive(t *testing.T) {
 				phase: v1.PodSucceeded,
 				containers: []v1.ContainerStatus{
 					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-5)*time.Minute)),
-					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-8)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-10)*time.Minute)),
 				},
 			},
 		},
@@ -397,15 +397,15 @@ func TestReapFailedPositive(t *testing.T) {
 			{
 				phase: v1.PodFailed,
 				containers: []v1.ContainerStatus{
-					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
 					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-10)*time.Minute)),
 				},
 			},
 			{
 				phase: v1.PodFailed,
 				containers: []v1.ContainerStatus{
 					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-5)*time.Minute)),
-					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-8)*time.Minute)),
+					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-10)*time.Minute)),
 				},
 			},
 		},

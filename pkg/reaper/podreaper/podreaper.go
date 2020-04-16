@@ -217,6 +217,10 @@ func (ctx *ReaperContext) deriveCompletedPods() {
 			}
 		}
 
+		if len(times) == 0 {
+			return
+		}
+
 		sort.Sort(FinishTimes(times))
 		lastFinishedContainerTime := times[len(times)-1]
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
@@ -259,6 +263,10 @@ func (ctx *ReaperContext) deriveFailedPods() {
 			if containerStatus.State.Terminated != nil {
 				times = append(times, containerStatus.State.Terminated.FinishedAt.Time)
 			}
+		}
+
+		if len(times) == 0 {
+			continue
 		}
 
 		sort.Sort(FinishTimes(times))
