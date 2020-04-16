@@ -194,7 +194,7 @@ func (ctx *ReaperContext) deriveCompletedPods() {
 		lastFinishedContainerTime := times[len(times)-1]
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
 
-		// Determine if pod is stuck deleting
+		// Determine if pod is reapable
 		if diff > ctx.ReapCompletedAfter {
 			log.Infof("%v/%v is reapable !! all containers completed for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
 			ctx.CompletedPods[podName] = podNamespace
@@ -238,10 +238,10 @@ func (ctx *ReaperContext) deriveFailedPods() {
 		lastFinishedContainerTime := times[len(times)-1]
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
 
-		// Determine if pod is stuck deleting
-		if diff > ctx.ReapCompletedAfter {
+		// Determine if pod is reapable
+		if diff > ctx.ReapFailedAfter {
 			log.Infof("%v/%v is reapable !! pod in failed state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
-			ctx.CompletedPods[podName] = podNamespace
+			ctx.FailedPods[podName] = podNamespace
 		}
 	}
 }

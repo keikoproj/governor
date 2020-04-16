@@ -185,7 +185,7 @@ func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 	}
 
 	if len(u.FakeReaper.FailedPods) != u.ExpectedFailed {
-		t.Fatalf("expected CompletedPods: %v, got: %v", u.ExpectedCompleted, len(u.FakeReaper.CompletedPods))
+		t.Fatalf("expected FailedPods: %v, got: %v", u.ExpectedFailed, len(u.FakeReaper.FailedPods))
 	}
 
 	reapable := _getReapable(u.FakeReaper)
@@ -376,8 +376,9 @@ func TestReapCompletedNegative(t *testing.T) {
 		},
 		FakeReaper:        reaper,
 		ExpectedCompleted: 0,
-		ExpectedReapable:  0,
-		ExpectedReaped:    0,
+		ExpectedFailed:    1,
+		ExpectedReapable:  1,
+		ExpectedReaped:    1,
 	}
 	testCase.Run(t, false)
 }
@@ -402,10 +403,10 @@ func TestReapFailedPositive(t *testing.T) {
 				},
 			},
 		},
-		FakeReaper:        reaper,
-		ExpectedCompleted: 1,
-		ExpectedReapable:  1,
-		ExpectedReaped:    1,
+		FakeReaper:       reaper,
+		ExpectedFailed:   1,
+		ExpectedReapable: 1,
+		ExpectedReaped:   1,
 	}
 	testCase.Run(t, false)
 }
