@@ -14,9 +14,9 @@ A pod is determined to be 'reapable' by reaper in the following conditions:
 
 #### Completed and Failed pods
 
-By using the flags `--reap-completed` and `--reap-failed` you can allow pod-reaper to delete pods marked completed or failed, while the respective flags `--reap-completed-after` and `--reap-failed-after` will set the time threshold for doing that.
+By using the flags `--reap-completed` and `--reap-failed` you can allow pod-reaper to delete pods marked completed or failed, while the respective flags `--reap-completed-after` and `--reap-failed-after` will set the time threshold for the deletion.
 
-This is helpful  when wanting to automatically clean up these pods across your cluster to avoid load on API Server by controllers that list / operate on pods.
+This is helpful when wanting to automatically clean up these pods across your cluster to avoid load on API Server by controllers that list / operate on pods.
 
 A pod is determined to be completed / failed by it's `Status.Phase`, and the threshold is calculated by looking at when the last container exited. so if you use the default thresholds, these pods will be considered reapable 4 hrs after the last container exited (given the phase of the pod is completed/failed).
 
