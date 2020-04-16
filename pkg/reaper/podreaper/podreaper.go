@@ -207,7 +207,6 @@ func podHasRunningContainers(pod v1.Pod) bool {
 		}
 	}
 	if runningContainers > 0 {
-		log.Infof("%v/%v is not reapable - running containers detected", pod.ObjectMeta.Namespace, pod.ObjectMeta.Name)
 		return true
 	}
 
