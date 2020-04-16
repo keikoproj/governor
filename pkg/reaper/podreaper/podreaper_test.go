@@ -34,8 +34,11 @@ import (
 var loggingEnabled bool
 
 const (
-	excludedNamespace = "excluded-ns"
-	includedNamespace = "incuded-ns"
+	excludedNamespace          = "excluded-ns"
+	stuckExcludedNamespace     = "stuck-excluded-ns"
+	completedExcludedNamespace = "completed-excluded-ns"
+	failedExcludedNamespace    = "failed-excluded-ns"
+	includedNamespace          = "incuded-ns"
 )
 
 func init() {
@@ -91,7 +94,31 @@ func loadFakeAPI(ctx *ReaperContext) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: excludedNamespace,
 				Annotations: map[string]string{
-					NamespaceExclusionAnnotationKey: NamespaceExclusionAnnotationValue,
+					NamespaceExclusionAnnotationKey: NamespaceExclusionEnabledAnnotationValue,
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: stuckExcludedNamespace,
+				Annotations: map[string]string{
+					NamespaceStuckExclusionAnnotationKey: NamespaceExclusionEnabledAnnotationValue,
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: completedExcludedNamespace,
+				Annotations: map[string]string{
+					NamespaceCompletedExclusionAnnotationKey: NamespaceExclusionEnabledAnnotationValue,
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: failedExcludedNamespace,
+				Annotations: map[string]string{
+					NamespaceFailedExclusionAnnotationKey: NamespaceExclusionEnabledAnnotationValue,
 				},
 			},
 		},
@@ -457,7 +484,7 @@ func TestNamespaceExclusionPositive(t *testing.T) {
 		Pods: []FakePod{
 			{
 				isTerminating:   true,
-				podNamespace:    excludedNamespace,
+				podNamespace:    stuckExcludedNamespace,
 				terminatingTime: time.Now().Add(time.Duration(-11) * time.Minute),
 			},
 			{
@@ -469,7 +496,15 @@ func TestNamespaceExclusionPositive(t *testing.T) {
 				},
 			},
 			{
-				podNamespace: excludedNamespace,
+				podNamespace: completedExcludedNamespace,
+				phase:        v1.PodSucceeded,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				podNamespace: failedExcludedNamespace,
 				phase:        v1.PodFailed,
 				containers: []v1.ContainerStatus{
 					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-50)*time.Minute)),

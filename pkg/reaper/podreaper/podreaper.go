@@ -37,10 +37,23 @@ const (
 	// PodFailedReason is the reason name for for failed pods
 	PodFailedReason = "Failed"
 
+	// ReapOperationStuck identifies the reap operation of a stuck pod
+	ReapOperationStuck = "StuckPod"
+	// ReapOperationFailed identifies the reap operation of a failed pod
+	ReapOperationFailed = "FailedPod"
+	// ReapOperationCompleted identifies the reap operation of a completed pod
+	ReapOperationCompleted = "CompletedPod"
+
 	// NamespaceExclusionAnnotationKey is the annotation key for exlcuding a namespace from reap events
-	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/pod-reaper-disabled"
-	// NamespaceExclusionAnnotationValue is the annotation value for exlcuding a namespace from reap events
-	NamespaceExclusionAnnotationValue = "true"
+	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/disable-pod-reaper"
+	// NamespaceCompletedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping completed pods
+	NamespaceCompletedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
+	// NamespaceFailedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping failed pods
+	NamespaceFailedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
+	// NamespaceStuckExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping stuck pods
+	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
+	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
+	NamespaceExclusionEnabledAnnotationValue = "true"
 )
 
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
@@ -105,7 +118,7 @@ func (ctx *ReaperContext) isQueueEmpty() bool {
 	return true
 }
 
-func (ctx *ReaperContext) isExcludedNamespace(namespace string) bool {
+func (ctx *ReaperContext) isExcludedNamespace(namespace, reapOperation string) bool {
 	var annotations map[string]string
 
 	for _, ns := range ctx.AllNamespaces.Items {
@@ -119,7 +132,23 @@ func (ctx *ReaperContext) isExcludedNamespace(namespace string) bool {
 	}
 
 	for key, value := range annotations {
-		if key == NamespaceExclusionAnnotationKey && value == NamespaceExclusionAnnotationValue {
+		// global namespace disable
+		if key == NamespaceExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for stuck pods
+		if reapOperation == ReapOperationStuck && key == NamespaceStuckExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for completed pods
+		if reapOperation == ReapOperationCompleted && key == NamespaceCompletedExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for failed pods
+		if reapOperation == ReapOperationFailed && key == NamespaceFailedExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
 			return true
 		}
 	}
@@ -226,7 +255,7 @@ func (ctx *ReaperContext) deriveCompletedPods() {
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
 
 		// Determine if pod is reapable
-		if diff > ctx.ReapCompletedAfter && !ctx.isExcludedNamespace(podNamespace) {
+		if diff > ctx.ReapCompletedAfter && !ctx.isExcludedNamespace(podNamespace, ReapOperationCompleted) {
 			log.Infof("%v/%v is reapable !! all containers completed for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
 			ctx.CompletedPods[podName] = podNamespace
 		}
@@ -274,7 +303,7 @@ func (ctx *ReaperContext) deriveFailedPods() {
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
 
 		// Determine if pod is reapable
-		if diff > ctx.ReapFailedAfter && !ctx.isExcludedNamespace(podNamespace) {
+		if diff > ctx.ReapFailedAfter && !ctx.isExcludedNamespace(podNamespace, ReapOperationFailed) {
 			log.Infof("%v/%v is reapable !! pod in failed state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
 			ctx.FailedPods[podName] = podNamespace
 		}
@@ -303,7 +332,7 @@ func (ctx *ReaperContext) deriveStuckPods() {
 		}
 
 		// Determine if pod is stuck deleting
-		if diff > ctx.TimeToReap && !ctx.isExcludedNamespace(podNamespace) {
+		if diff > ctx.TimeToReap && !ctx.isExcludedNamespace(podNamespace, ReapOperationStuck) {
 			log.Infof("%v/%v is reapable !!", podNamespace, podName)
 			ctx.StuckPods[podName] = podNamespace
 		}
