@@ -37,6 +37,10 @@ func init() {
 	flag.BoolVar(&loggingEnabled, "logging-enabled", false, "Enable Reaper Logs")
 }
 
+func _getReapable(ctx *ReaperContext) int {
+	return len(ctx.StuckPods) + len(ctx.CompletedPods) + len(ctx.FailedPods)
+}
+
 func newFakeReaperContext() *ReaperContext {
 	if !loggingEnabled {
 		log.Out = ioutil.Discard
@@ -44,13 +48,31 @@ func newFakeReaperContext() *ReaperContext {
 	}
 	ctx := ReaperContext{}
 	ctx.StuckPods = make(map[string]string)
+	ctx.CompletedPods = make(map[string]string)
+	ctx.FailedPods = make(map[string]string)
 	ctx.KubernetesClient = fake.NewSimpleClientset()
 	loadFakeAPI(&ctx)
 	// Default Flags
 	ctx.TimeToReap = 10
 	ctx.DryRun = false
 	ctx.SoftReap = true
+	ctx.ReapCompleted = true
+	ctx.ReapCompletedAfter = 10
+	ctx.ReapFailed = true
+	ctx.ReapFailedAfter = 10
 	return &ctx
+}
+
+func getContainerStatus(name, reason string, finishedAt time.Time) v1.ContainerStatus {
+	return v1.ContainerStatus{
+		Name: name,
+		State: v1.ContainerState{
+			Terminated: &v1.ContainerStateTerminated{
+				Reason:     reason,
+				FinishedAt: metav1.Time{Time: finishedAt},
+			},
+		},
+	}
 }
 
 func loadFakeAPI(ctx *ReaperContext) {
@@ -115,6 +137,16 @@ func createFakePods(pods []FakePod, ctx *ReaperContext) {
 			pod.DeletionTimestamp = &metav1.Time{Time: adjustedNow}
 		}
 
+		if c.phase != "" {
+			pod.Status.Phase = c.phase
+		}
+
+		if len(c.containers) != 0 {
+			for _, c := range c.containers {
+				pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, c)
+			}
+		}
+
 		for i := 1; i <= c.runningContainers; i++ {
 			runningState := v1.ContainerStateRunning{StartedAt: metav1.Time{Time: time.Now()}}
 			runningContainerStatus := v1.ContainerStatus{Name: fmt.Sprintf("container-%v", i), State: v1.ContainerState{Running: &runningState}}
@@ -144,12 +176,21 @@ func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 		return
 	}
 
-	if len(u.FakeReaper.SeenPods.Items) != u.ExpectedSeen {
-		t.Fatalf("expected SeenPods: %v, got: %v", u.ExpectedSeen, len(u.FakeReaper.SeenPods.Items))
+	if len(u.FakeReaper.TerminatingPods.Items) != u.ExpectedTerminating {
+		t.Fatalf("expected TerminatingPods: %v, got: %v", u.ExpectedTerminating, len(u.FakeReaper.TerminatingPods.Items))
 	}
 
-	if len(u.FakeReaper.StuckPods) != u.ExpectedReapable {
-		t.Fatalf("expected StuckPods: %v, got: %v", u.ExpectedReapable, len(u.FakeReaper.StuckPods))
+	if len(u.FakeReaper.CompletedPods) != u.ExpectedCompleted {
+		t.Fatalf("expected CompletedPods: %v, got: %v", u.ExpectedCompleted, len(u.FakeReaper.CompletedPods))
+	}
+
+	if len(u.FakeReaper.FailedPods) != u.ExpectedFailed {
+		t.Fatalf("expected CompletedPods: %v, got: %v", u.ExpectedCompleted, len(u.FakeReaper.CompletedPods))
+	}
+
+	reapable := _getReapable(u.FakeReaper)
+	if reapable != u.ExpectedReapable {
+		t.Fatalf("expected Reapable: %v, got: %v", u.ExpectedReapable, reapable)
 	}
 
 	if u.FakeReaper.ReapedPods != u.ExpectedReaped {
@@ -164,7 +205,9 @@ type FakePod struct {
 	deletionGracePeriod    *int64
 	terminationGracePeriod *int64
 	isTerminating          bool
+	phase                  v1.PodPhase
 	terminatingTime        time.Time
+	containers             []v1.ContainerStatus
 	runningContainers      int
 	terminatedContainers   int
 }
@@ -173,7 +216,9 @@ type ReaperUnitTest struct {
 	TestDescription         string
 	Pods                    []FakePod
 	FakeReaper              *ReaperContext
-	ExpectedSeen            int
+	ExpectedTerminating     int
+	ExpectedCompleted       int
+	ExpectedFailed          int
 	ExpectedReapable        int
 	ExpectedReaped          int
 	ExpectedDurationSeconds int
@@ -188,10 +233,10 @@ func TestDeriveStatePositive(t *testing.T) {
 				isTerminating: true,
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     1,
-		ExpectedReapable: 0,
-		ExpectedReaped:   0,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedReapable:    0,
+		ExpectedReaped:      0,
 	}
 	testCase.Run(t, false)
 }
@@ -205,10 +250,10 @@ func TestDeriveStateNegative(t *testing.T) {
 				isTerminating: false,
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     0,
-		ExpectedReapable: 0,
-		ExpectedReaped:   0,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 0,
+		ExpectedReapable:    0,
+		ExpectedReaped:      0,
 	}
 	testCase.Run(t, false)
 }
@@ -224,10 +269,10 @@ func TestDeriveTimeReapablePositive(t *testing.T) {
 				terminatingTime: time.Now().Add(time.Duration(-8) * time.Minute),
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     1,
-		ExpectedReapable: 1,
-		ExpectedReaped:   1,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedReapable:    1,
+		ExpectedReaped:      1,
 	}
 	testCase.Run(t, false)
 }
@@ -243,10 +288,153 @@ func TestDeriveTimeReapableNegative(t *testing.T) {
 				terminatingTime: time.Now().Add(time.Duration(-4) * time.Minute),
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     1,
-		ExpectedReapable: 0,
-		ExpectedReaped:   0,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedReapable:    0,
+		ExpectedReaped:      0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestReapCompletedFailedDisable(t *testing.T) {
+	reaper := newFakeReaperContext()
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Completed/Failed disabled - should honor flag",
+		Pods: []FakePod{
+			{
+				phase: v1.PodSucceeded,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				phase: v1.PodFailed,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-50)*time.Minute)),
+					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-80)*time.Minute)),
+				},
+			},
+		},
+		FakeReaper:        reaper,
+		ExpectedCompleted: 0,
+		ExpectedReapable:  0,
+		ExpectedReaped:    0,
+	}
+	testCase.FakeReaper.ReapCompleted = false
+	testCase.FakeReaper.ReapFailed = false
+	testCase.Run(t, false)
+}
+
+func TestReapCompletedPositive(t *testing.T) {
+	reaper := newFakeReaperContext()
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Completed - able to reap completed pods",
+		Pods: []FakePod{
+			{
+				phase: v1.PodSucceeded,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				phase: v1.PodSucceeded,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-5)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-8)*time.Minute)),
+				},
+			},
+		},
+		FakeReaper:        reaper,
+		ExpectedCompleted: 1,
+		ExpectedReapable:  1,
+		ExpectedReaped:    1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestReapCompletedNegative(t *testing.T) {
+	reaper := newFakeReaperContext()
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Completed - should not reap non completed pods",
+		Pods: []FakePod{
+			{
+				phase: v1.PodFailed,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				phase: v1.PodRunning,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", "running", time.Now().Add(time.Duration(-50)*time.Minute)),
+					getContainerStatus("container-2", "running", time.Now().Add(time.Duration(-80)*time.Minute)),
+				},
+			},
+		},
+		FakeReaper:        reaper,
+		ExpectedCompleted: 0,
+		ExpectedReapable:  0,
+		ExpectedReaped:    0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestReapFailedPositive(t *testing.T) {
+	reaper := newFakeReaperContext()
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Completed - able to reap failed pods",
+		Pods: []FakePod{
+			{
+				phase: v1.PodFailed,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				phase: v1.PodFailed,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-5)*time.Minute)),
+					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-8)*time.Minute)),
+				},
+			},
+		},
+		FakeReaper:        reaper,
+		ExpectedCompleted: 1,
+		ExpectedReapable:  1,
+		ExpectedReaped:    1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestReapFailedNegative(t *testing.T) {
+	reaper := newFakeReaperContext()
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Completed - should not reap non failed pods",
+		Pods: []FakePod{
+			{
+				phase: v1.PodSucceeded,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				phase: v1.PodRunning,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", "running", time.Now().Add(time.Duration(-50)*time.Minute)),
+					getContainerStatus("container-2", "running", time.Now().Add(time.Duration(-80)*time.Minute)),
+				},
+			},
+		},
+		FakeReaper:        reaper,
+		ExpectedCompleted: 1,
+		ExpectedFailed:    0,
+		ExpectedReapable:  1,
+		ExpectedReaped:    1,
 	}
 	testCase.Run(t, false)
 }
@@ -263,10 +451,10 @@ func TestDryRunPositive(t *testing.T) {
 				terminatingTime: time.Now().Add(time.Duration(-8) * time.Minute),
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     1,
-		ExpectedReapable: 1,
-		ExpectedReaped:   0,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedReapable:    1,
+		ExpectedReaped:      0,
 	}
 	testCase.Run(t, false)
 }
@@ -285,10 +473,10 @@ func TestSoftReapPositive(t *testing.T) {
 				terminatedContainers: 1,
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     1,
-		ExpectedReapable: 0,
-		ExpectedReaped:   0,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedReapable:    0,
+		ExpectedReaped:      0,
 	}
 	testCase.Run(t, false)
 }
@@ -307,10 +495,10 @@ func TestSoftReapNegative(t *testing.T) {
 				terminatedContainers: 1,
 			},
 		},
-		FakeReaper:       reaper,
-		ExpectedSeen:     1,
-		ExpectedReapable: 1,
-		ExpectedReaped:   1,
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedReapable:    1,
+		ExpectedReaped:      1,
 	}
 	testCase.Run(t, false)
 }
