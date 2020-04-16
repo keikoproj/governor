@@ -87,8 +87,11 @@ Before reaping, reaper will dump the pod spec to log.
 ```yaml
 rules:
 - apiGroups: [""]
-  resources: ["pods", ]
+  resources: ["pods"]
   verbs: ["get", "delete", "list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 ```
 
 ## Node Reaper
