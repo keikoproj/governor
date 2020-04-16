@@ -18,7 +18,10 @@ package podreaper
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/sirupsen/logrus"
@@ -28,42 +31,135 @@ import (
 
 var log = logrus.New()
 
+const (
+	// PodCompletedReason is the reason name for for completed pods
+	PodCompletedReason = "Completed"
+	// PodFailedReason is the reason name for for failed pods
+	PodFailedReason = "Failed"
+
+	// ReapOperationStuck identifies the reap operation of a stuck pod
+	ReapOperationStuck = "StuckPod"
+	// ReapOperationFailed identifies the reap operation of a failed pod
+	ReapOperationFailed = "FailedPod"
+	// ReapOperationCompleted identifies the reap operation of a completed pod
+	ReapOperationCompleted = "CompletedPod"
+
+	// NamespaceExclusionAnnotationKey is the annotation key for exlcuding a namespace from reap events
+	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/disable-pod-reaper"
+	// NamespaceCompletedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping completed pods
+	NamespaceCompletedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
+	// NamespaceFailedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping failed pods
+	NamespaceFailedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
+	// NamespaceStuckExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping stuck pods
+	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
+	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
+	NamespaceExclusionEnabledAnnotationValue = "true"
+)
+
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
 func Run(ctx *ReaperContext) error {
 	log.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
 
-	err := ctx.getTerminatingPods()
+	err := ctx.getPods()
 	if err != nil {
-		log.Errorf("failed to get terminating pods, %v", err)
-		return err
-	}
-
-	if len(ctx.SeenPods.Items) == 0 {
-		log.Info("no terminating pods found")
-		return nil
+		return errors.Wrap(err, "failed to list pods")
 	}
 
 	ctx.deriveStuckPods()
-	if len(ctx.StuckPods) == 0 {
+	ctx.deriveCompletedPods()
+	ctx.deriveFailedPods()
+
+	if ctx.isQueueEmpty() {
 		log.Info("no reapable pods found")
 		return nil
 	}
 
-	err = ctx.reapStuckPods()
+	err = ctx.Reap()
 	if err != nil {
-		log.Errorf("failed to reap stuck pods, %v", err)
-		return err
+		return errors.Wrap(err, "failed to reap pods")
+	}
+
+	return nil
+}
+
+func (ctx *ReaperContext) Reap() error {
+	err := ctx.reapPods(ctx.StuckPods)
+	if err != nil {
+		return errors.Wrap(err, "failed to reap stuck pods")
+	}
+
+	err = ctx.reapPods(ctx.CompletedPods)
+	if err != nil {
+		return errors.Wrap(err, "failed to reap completed pods")
+	}
+
+	err = ctx.reapPods(ctx.FailedPods)
+	if err != nil {
+		return errors.Wrap(err, "failed to reap failed pods")
 	}
 	return nil
 }
 
-func (ctx *ReaperContext) reapStuckPods() error {
-	log.Infoln("start reap cycle")
+func (ctx *ReaperContext) isQueueEmpty() bool {
+	if len(ctx.StuckPods) != 0 {
+		return false
+	}
+
+	if ctx.ReapCompleted && len(ctx.CompletedPods) != 0 {
+		return false
+	}
+
+	if ctx.ReapFailed && len(ctx.FailedPods) != 0 {
+		return false
+	}
+
+	return true
+}
+
+func (ctx *ReaperContext) isExcludedNamespace(namespace, reapOperation string) bool {
+	var annotations map[string]string
+
+	for _, ns := range ctx.AllNamespaces.Items {
+		if ns.Name == namespace {
+			annotations = ns.GetAnnotations()
+		}
+	}
+
+	if annotations == nil {
+		return false
+	}
+
+	for key, value := range annotations {
+		// global namespace disable
+		if key == NamespaceExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for stuck pods
+		if reapOperation == ReapOperationStuck && key == NamespaceStuckExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for completed pods
+		if reapOperation == ReapOperationCompleted && key == NamespaceCompletedExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for failed pods
+		if reapOperation == ReapOperationFailed && key == NamespaceFailedExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 	corev1 := ctx.KubernetesClient.CoreV1()
 	// Iterate stuck pods and reap if not dryRun
-	for pod, namespace := range ctx.StuckPods {
+	for pod, namespace := range pods {
 		log.Infof("reaping %v/%v", namespace, pod)
 		gracePeriod := int64(0)
 		forceDeleteOpts := &metav1.DeleteOptions{}
@@ -96,52 +192,153 @@ func (ctx *ReaperContext) reapStuckPods() error {
 	return nil
 }
 
-func (ctx *ReaperContext) deriveStuckPods() {
+func podHasRunningContainers(pod v1.Pod) bool {
+	var (
+		runningContainers    int
+		terminatedContainers int
+		containerStatuses    = pod.Status.ContainerStatuses
+	)
+
+	for _, containerStatus := range containerStatuses {
+		if containerStatus.State.Running != nil {
+			runningContainers++
+		} else {
+			terminatedContainers++
+		}
+	}
+	if runningContainers > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (ctx *ReaperContext) deriveCompletedPods() {
+
+	if !ctx.ReapCompleted {
+		return
+	}
+
 	now := time.Now().UTC()
-	log.Infof("reap time = %v", now)
-	log.Infof("reap target threshold = %vm", ctx.TimeToReap)
-	// Iterate pods in terminating and determine how many minutes passed since
-	for _, pod := range ctx.SeenPods.Items {
-		podName := pod.ObjectMeta.Name
-		podNamespace := pod.ObjectMeta.Namespace
-		containerStatuses := pod.Status.ContainerStatuses
-		deletionGracePeriod := *pod.ObjectMeta.DeletionGracePeriodSeconds
-		terminationGracePeriod := *pod.Spec.TerminationGracePeriodSeconds
-		totalGracePeriod := deletionGracePeriod + terminationGracePeriod
-		log.Infof("%v/%v total grace period = %vs", podNamespace, podName, totalGracePeriod)
-		// Subtract totalGracePeriod duration from DeletionTimestamp to get the real deletion timestamp
-		deletionTimestamp := pod.ObjectMeta.DeletionTimestamp.Add(time.Duration(-totalGracePeriod) * time.Second).UTC()
-		// Get the diff between deletion start and now in minutes
-		minuteDiff := now.Sub(deletionTimestamp).Minutes()
-		log.Infof("%v/%v has been terminating since %v, diff: %.2f/%v", podNamespace, podName, deletionTimestamp, minuteDiff, ctx.TimeToReap)
+	for _, pod := range ctx.AllPods.Items {
+		var (
+			containerStatuses = pod.Status.ContainerStatuses
+			times             = make([]time.Time, 0)
+			podName           = pod.ObjectMeta.Name
+			podNamespace      = pod.ObjectMeta.Namespace
+		)
+
+		// If pod phase is not completed, skip
+		if pod.Status.Phase != v1.PodSucceeded {
+			continue
+		}
+
 		// When softReap mode is On, only pods with 0 running containers are reapable
-		if ctx.SoftReap {
-			var runningContainers int
-			var terminatedContainers int
-			for _, containerStatus := range containerStatuses {
-				if containerStatus.State.Running != nil {
-					runningContainers++
-				} else {
-					terminatedContainers++
-				}
-			}
-			if runningContainers > 0 {
-				log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
-				continue
+		if ctx.SoftReap && podHasRunningContainers(pod) {
+			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
+			continue
+		}
+
+		for _, containerStatus := range containerStatuses {
+			if containerStatus.State.Terminated != nil {
+				times = append(times, containerStatus.State.Terminated.FinishedAt.Time)
 			}
 		}
 
-		// Delta between deletion start time and now in minutes must be greater than configured reapAfter to become reapable
-		if minuteDiff > ctx.TimeToReap {
-			log.Infof("%v/%v is reapable !!", podNamespace, podName)
-			ctx.StuckPods[podName] = podNamespace
-		} else {
-			log.Infof("%v/%v is not reapable - did not meet --reap-after threshold", podNamespace, podName)
+		if len(times) == 0 {
+			return
+		}
+
+		sort.Sort(FinishTimes(times))
+		lastFinishedContainerTime := times[len(times)-1]
+		diff := now.Sub(lastFinishedContainerTime).Minutes()
+
+		// Determine if pod is reapable
+		if diff > ctx.ReapCompletedAfter && !ctx.isExcludedNamespace(podNamespace, ReapOperationCompleted) {
+			log.Infof("%v/%v is reapable !! all containers completed for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
+			ctx.CompletedPods[podName] = podNamespace
 		}
 	}
 }
 
-func (ctx *ReaperContext) getTerminatingPods() error {
+func (ctx *ReaperContext) deriveFailedPods() {
+
+	if !ctx.ReapFailed {
+		return
+	}
+
+	now := time.Now().UTC()
+	for _, pod := range ctx.AllPods.Items {
+		var (
+			containerStatuses = pod.Status.ContainerStatuses
+			times             = make([]time.Time, 0)
+			podName           = pod.ObjectMeta.Name
+			podNamespace      = pod.ObjectMeta.Namespace
+		)
+
+		// If pod phase is not failed, skip
+		if pod.Status.Phase != v1.PodFailed {
+			continue
+		}
+
+		// When softReap mode is On, only pods with 0 running containers are reapable
+		if ctx.SoftReap && podHasRunningContainers(pod) {
+			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
+			continue
+		}
+
+		for _, containerStatus := range containerStatuses {
+			if containerStatus.State.Terminated != nil {
+				times = append(times, containerStatus.State.Terminated.FinishedAt.Time)
+			}
+		}
+
+		if len(times) == 0 {
+			continue
+		}
+
+		sort.Sort(FinishTimes(times))
+		lastFinishedContainerTime := times[len(times)-1]
+		diff := now.Sub(lastFinishedContainerTime).Minutes()
+
+		// Determine if pod is reapable
+		if diff > ctx.ReapFailedAfter && !ctx.isExcludedNamespace(podNamespace, ReapOperationFailed) {
+			log.Infof("%v/%v is reapable !! pod in failed state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapFailedAfter)
+			ctx.FailedPods[podName] = podNamespace
+		}
+	}
+}
+
+func (ctx *ReaperContext) deriveStuckPods() {
+	now := time.Now().UTC()
+	for _, pod := range ctx.TerminatingPods.Items {
+		var (
+			podName                = pod.ObjectMeta.Name
+			podNamespace           = pod.ObjectMeta.Namespace
+			deletionGracePeriod    = *pod.ObjectMeta.DeletionGracePeriodSeconds
+			terminationGracePeriod = *pod.Spec.TerminationGracePeriodSeconds
+			totalGracePeriod       = deletionGracePeriod + terminationGracePeriod
+			deletionTimestamp      = pod.ObjectMeta.DeletionTimestamp.Add(time.Duration(-totalGracePeriod) * time.Second).UTC()
+			diff                   = now.Sub(deletionTimestamp).Minutes()
+		)
+		log.Infof("%v/%v total grace period = %vs", podNamespace, podName, totalGracePeriod)
+		log.Infof("%v/%v has been terminating since %v, diff: %.2f/%v", podNamespace, podName, deletionTimestamp, diff, ctx.TimeToReap)
+
+		// When softReap mode is On, only pods with 0 running containers are reapable
+		if ctx.SoftReap && podHasRunningContainers(pod) {
+			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
+			continue
+		}
+
+		// Determine if pod is stuck deleting
+		if diff > ctx.TimeToReap && !ctx.isExcludedNamespace(podNamespace, ReapOperationStuck) {
+			log.Infof("%v/%v is reapable !!", podNamespace, podName)
+			ctx.StuckPods[podName] = podNamespace
+		}
+	}
+}
+
+func (ctx *ReaperContext) getPods() error {
 	log.Infoln("starting scan cycle")
 	terminatingPods := &v1.PodList{}
 	corev1 := ctx.KubernetesClient.CoreV1()
@@ -151,6 +348,13 @@ func (ctx *ReaperContext) getTerminatingPods() error {
 	if err != nil {
 		return err
 	}
+	ctx.AllPods = allPods
+
+	namespaces, err := ctx.KubernetesClient.CoreV1().Namespaces().List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	ctx.AllNamespaces = namespaces
 
 	log.Infof("found %v pods", len(allPods.Items))
 
@@ -162,17 +366,35 @@ func (ctx *ReaperContext) getTerminatingPods() error {
 		}
 	}
 
-	ctx.SeenPods = terminatingPods
+	ctx.TerminatingPods = terminatingPods
 	return nil
 }
 
 func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.StuckPods = make(map[string]string)
+	ctx.CompletedPods = make(map[string]string)
+	ctx.FailedPods = make(map[string]string)
 	ctx.DryRun = args.DryRun
+	ctx.ReapCompleted = args.ReapCompleted
+	ctx.ReapFailed = args.ReapFailed
+	ctx.ReapCompletedAfter = args.ReapCompletedAfter
+	ctx.ReapFailedAfter = args.ReapFailedAfter
 
 	ctx.SoftReap = args.SoftReap
 	if !ctx.SoftReap {
 		log.Warn("--soft-reap is off, stuck pods with running containers will be reaped")
+	}
+
+	if ctx.ReapCompleted && ctx.ReapCompletedAfter < 1 {
+		err := fmt.Errorf("--reap-completed-after must be set to a number greater than or equal to 1")
+		log.Errorln(err)
+		return err
+	}
+
+	if ctx.ReapFailed && ctx.ReapFailedAfter < 1 {
+		err := fmt.Errorf("--reap-failed-after must be set to a number greater than or equal to 1")
+		log.Errorln(err)
+		return err
 	}
 
 	ctx.TimeToReap = args.ReapAfter

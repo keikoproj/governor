@@ -12,6 +12,27 @@ A pod is determined to be 'reapable' by reaper in the following conditions:
 
 <a class="anchor" id="1">1. </a>Adjusted deletion timestamp is calculated by `sum(Metadata.DeletionTimestamp - Metadata.DeletionGracePeriodSeconds - Spec.TerminationGracePeriodSeconds)`
 
+#### Completed and Failed pods
+
+By using the flags `--reap-completed` and `--reap-failed` you can allow pod-reaper to delete pods marked completed or failed, while the respective flags `--reap-completed-after` and `--reap-failed-after` will set the time threshold for the deletion.
+
+This is helpful when wanting to automatically clean up these pods across your cluster to avoid load on API Server by controllers that list / operate on pods.
+
+A pod is determined to be completed / failed by it's `Status.Phase`, and the threshold is calculated by looking at when the last container exited. so if you use the default thresholds, these pods will be considered reapable 4 hrs after the last container exited (given the phase of the pod is completed/failed).
+
+#### Namespace level control
+
+You may want to disable certain features for certain namespaces, you can annotate your namespaces accordingly to control which features are active. Use the package flags to control options globally (by default pod-reaper run on all namespaces).
+
+##### Namespace annotations
+
+| Annotation Key | Annotation Value | Action
+|---|:---:|:---:|
+| governor.keikoproj.io/disable-pod-reaper | "true" | disable all features
+| governor.keikoproj.io/disable-completed-pod-reap | "true" | disable completed pod reaping
+| governor.keikoproj.io/disable-completed-pod-reap | "true" | disable failed pod reaping
+| governor.keikoproj.io/disable-stuck-pod-reap | "true" | disable terminating/stuck pod reaping
+
 ### Usage
 
 ```text
@@ -19,12 +40,16 @@ Usage:
   governor reap pod [flags]
 
 Flags:
-      --dry-run             Will not terminate pods
-  -h, --help                help for pod
-      --kubeconfig string   Absolute path to the kubeconfig file
-      --local-mode          Use cluster external auth
-      --reap-after float    Reaping threshold in minutes (default 10)
-      --soft-reap           Will not terminate pods with running containers (default true)
+      --dry-run                      Will not terminate pods
+  -h, --help                         help for pod
+      --kubeconfig string            Absolute path to the kubeconfig file
+      --local-mode                   Use cluster external auth
+      --reap-after float             Reaping threshold in minutes (default 10)
+      --reap-completed               Delete pods in completed phase
+      --reap-completed-after float   Reaping threshold in minutes for completed pods (default 240)
+      --reap-failed                  Delete pods in failed phase
+      --reap-failed-after float      Reaping threshold in minutes for failed pods (default 240)
+      --soft-reap                    Will not terminate pods with running containers (default true)
 ```
 
 #### Example
@@ -57,40 +82,16 @@ $ go run cmd/governor/governor.go reap pod \
 
 Before reaping, reaper will dump the pod spec to log.
 
-```text
-INFO[2019-01-14T23:29:51-08:00] starting cluster external auth
-INFO[2019-01-14T23:29:51-08:00] kubeconfig: ~/.kube/config
-INFO[2019-01-14T23:29:51-08:00] target: https://api-eytan-test-cluster-k8-ph1nmb-1654871915.us-west-2.elb.amazonaws.com
-INFO[2019-01-14T23:29:51-08:00] starting scan cycle
-INFO[2019-01-14T23:29:52-08:00] found 69 pods
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-1 is being deleted
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-2 is being deleted
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-3 is being deleted
-INFO[2019-01-14T23:29:52-08:00] reap time = 2019-01-15 07:29:52.1688 +0000 UTC
-INFO[2019-01-14T23:29:52-08:00] reap target threshold = 6m
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-1 total grace period = 3630s
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-1 has been terminating since 2019-01-15 07:19:37 +0000 UTC, diff: 10.25/6
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-1 is reapable !!
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-2 total grace period = 3630s
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-2 has been terminating since 2019-01-15 07:23:17 +0000 UTC, diff: 8.59/6
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-2 is not reapable - running containers detected
-INFO[2019-01-14T23:29:52-08:00] start reap cycle
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-3 total grace period = 3630s
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-3 has been terminating since 2019-01-15 07:27:17 +0000 UTC, diff: 2.59/6
-INFO[2019-01-14T23:29:52-08:00] kube-system/pod-3 is not reapable - did not meet reapAfter threshold
-INFO[2019-01-14T23:29:52-08:00] start reap cycle
-INFO[2019-01-14T23:29:52-08:00] reaping kube-system/pod-1
-INFO[2019-01-14T23:29:52-08:00] pod dump: {"metadata":{"name":"pod-1","namespace":"kube-system","selfLink":"/api/v1/namespaces/kube-system/pods/pod-1","uid":"f9554780-1895-11e9-9918-0ace961425a6","resourceVersion":"1349217","creationTimestamp":"2019-01-15T07:20:02Z","deletionTimestamp":"2019-01-15T08:20:07Z","deletionGracePeriodSeconds":3600,"labels":{"app":"pod-1"}},"spec":{"volumes":[{"name":"default-token-vgrjj","secret":{"secretName":"default-token-vgrjj","defaultMode":420}}],"containers":[{"name":"busybox","image":"busybox","command":["sleep","3600"],"resources":{},"volumeMounts":[{"name":"default-token-vgrjj","readOnly":true,"mountPath":"/var/run/secrets/kubernetes.io/serviceaccount"}],"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent"}],"restartPolicy":"Always","terminationGracePeriodSeconds":30,"dnsPolicy":"ClusterFirst","serviceAccountName":"default","serviceAccount":"default","nodeName":"ip-10-105-234-237.us-west-2.compute.internal","securityContext":{},"schedulerName":"default-scheduler","tolerations":[{"key":"node.kubernetes.io/not-ready","operator":"Exists","effect":"NoExecute","tolerationSeconds":300},{"key":"node.kubernetes.io/unreachable","operator":"Exists","effect":"NoExecute","tolerationSeconds":300}],"priority":0},"status":{"phase":"Running","conditions":[{"type":"Initialized","status":"True","lastProbeTime":null,"lastTransitionTime":"2019-01-15T07:20:02Z"},{"type":"Ready","status":"True","lastProbeTime":null,"lastTransitionTime":"2019-01-15T07:20:03Z"},{"type":"ContainersReady","status":"True","lastProbeTime":null,"lastTransitionTime":"2019-01-15T07:20:03Z"},{"type":"PodScheduled","status":"True","lastProbeTime":null,"lastTransitionTime":"2019-01-15T07:20:02Z"}],"hostIP":"10.105.234.237","podIP":"100.98.101.92","startTime":"2019-01-15T07:20:02Z","containerStatuses":[{"name":"busybox","state":{"running":{"startedAt":"2019-01-15T07:20:03Z"}},"lastState":{},"ready":true,"restartCount":0,"image":"busybox:latest","imageID":"docker-pullable://busybox@sha256:7964ad52e396a6e045c39b5a44438424ac52e12e4d5a25d94895f2058cb863a0","containerID":"docker://13e47483f2f80a529a12a473b2fa0e429793edceaee24b43da3616d7cb09281b"}],"qosClass":"BestEffort"}}
-WARN[2019-01-14T23:29:52-08:00] dry-run is on, pod will not be reaped
-```
-
 ### Required RBAC Permissions
 
 ```yaml
 rules:
 - apiGroups: [""]
-  resources: ["pods", ]
+  resources: ["pods"]
   verbs: ["get", "delete", "list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 ```
 
 ## Node Reaper

@@ -16,6 +16,8 @@ limitations under the License.
 package podreaper
 
 import (
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -24,19 +26,45 @@ import (
 type ReaperContext struct {
 	KubernetesClient     kubernetes.Interface
 	KubernetesConfigPath string
-	SeenPods             *v1.PodList
+	TerminatingPods      *v1.PodList
+	AllPods              *v1.PodList
+	AllNamespaces        *v1.NamespaceList
 	StuckPods            map[string]string
+	CompletedPods        map[string]string
+	FailedPods           map[string]string
 	ReapedPods           int
 	TimeToReap           float64
+	ReapCompletedAfter   float64
+	ReapFailedAfter      float64
+	ReapCompleted        bool
+	ReapFailed           bool
 	SoftReap             bool
 	DryRun               bool
 }
 
 // Args is the argument struct for pod-reaper
 type Args struct {
-	K8sConfigPath string
-	ReapAfter     float64
-	LocalMode     bool
-	SoftReap      bool
-	DryRun        bool
+	K8sConfigPath      string
+	ReapAfter          float64
+	LocalMode          bool
+	SoftReap           bool
+	DryRun             bool
+	ReapCompleted      bool
+	ReapCompletedAfter float64
+	ReapFailed         bool
+	ReapFailedAfter    float64
+}
+
+type FinishTimes []time.Time
+
+func (p FinishTimes) Len() int {
+	return len(p)
+}
+
+func (p FinishTimes) Less(i, j int) bool {
+	return p[i].Before(p[j])
+}
+
+func (p FinishTimes) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
 }
