@@ -28,6 +28,7 @@ type ReaperContext struct {
 	KubernetesConfigPath string
 	TerminatingPods      *v1.PodList
 	AllPods              *v1.PodList
+	AllNamespaces        *v1.NamespaceList
 	StuckPods            map[string]string
 	CompletedPods        map[string]string
 	FailedPods           map[string]string

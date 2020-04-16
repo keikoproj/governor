@@ -36,6 +36,11 @@ const (
 	PodCompletedReason = "Completed"
 	// PodFailedReason is the reason name for for failed pods
 	PodFailedReason = "Failed"
+
+	// NamespaceExclusionAnnotationKey is the annotation key for exlcuding a namespace from reap events
+	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/pod-reaper-disabled"
+	// NamespaceExclusionAnnotationValue is the annotation value for exlcuding a namespace from reap events
+	NamespaceExclusionAnnotationValue = "true"
 )
 
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
@@ -98,6 +103,28 @@ func (ctx *ReaperContext) isQueueEmpty() bool {
 	}
 
 	return true
+}
+
+func (ctx *ReaperContext) isExcludedNamespace(namespace string) bool {
+	var annotations map[string]string
+
+	for _, ns := range ctx.AllNamespaces.Items {
+		if ns.Name == namespace {
+			annotations = ns.GetAnnotations()
+		}
+	}
+
+	if annotations == nil {
+		return false
+	}
+
+	for key, value := range annotations {
+		if key == NamespaceExclusionAnnotationKey && value == NamespaceExclusionAnnotationValue {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (ctx *ReaperContext) reapPods(pods map[string]string) error {
@@ -195,7 +222,7 @@ func (ctx *ReaperContext) deriveCompletedPods() {
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
 
 		// Determine if pod is reapable
-		if diff > ctx.ReapCompletedAfter {
+		if diff > ctx.ReapCompletedAfter && !ctx.isExcludedNamespace(podNamespace) {
 			log.Infof("%v/%v is reapable !! all containers completed for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
 			ctx.CompletedPods[podName] = podNamespace
 		}
@@ -239,7 +266,7 @@ func (ctx *ReaperContext) deriveFailedPods() {
 		diff := now.Sub(lastFinishedContainerTime).Minutes()
 
 		// Determine if pod is reapable
-		if diff > ctx.ReapFailedAfter {
+		if diff > ctx.ReapFailedAfter && !ctx.isExcludedNamespace(podNamespace) {
 			log.Infof("%v/%v is reapable !! pod in failed state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapCompletedAfter)
 			ctx.FailedPods[podName] = podNamespace
 		}
@@ -256,10 +283,10 @@ func (ctx *ReaperContext) deriveStuckPods() {
 			terminationGracePeriod = *pod.Spec.TerminationGracePeriodSeconds
 			totalGracePeriod       = deletionGracePeriod + terminationGracePeriod
 			deletionTimestamp      = pod.ObjectMeta.DeletionTimestamp.Add(time.Duration(-totalGracePeriod) * time.Second).UTC()
-			deletionDiff           = now.Sub(deletionTimestamp).Minutes()
+			diff                   = now.Sub(deletionTimestamp).Minutes()
 		)
 		log.Infof("%v/%v total grace period = %vs", podNamespace, podName, totalGracePeriod)
-		log.Infof("%v/%v has been terminating since %v, diff: %.2f/%v", podNamespace, podName, deletionTimestamp, deletionDiff, ctx.TimeToReap)
+		log.Infof("%v/%v has been terminating since %v, diff: %.2f/%v", podNamespace, podName, deletionTimestamp, diff, ctx.TimeToReap)
 
 		// When softReap mode is On, only pods with 0 running containers are reapable
 		if ctx.SoftReap && podHasRunningContainers(pod) {
@@ -268,7 +295,7 @@ func (ctx *ReaperContext) deriveStuckPods() {
 		}
 
 		// Determine if pod is stuck deleting
-		if deletionDiff > ctx.TimeToReap {
+		if diff > ctx.TimeToReap && !ctx.isExcludedNamespace(podNamespace) {
 			log.Infof("%v/%v is reapable !!", podNamespace, podName)
 			ctx.StuckPods[podName] = podNamespace
 		}
@@ -286,6 +313,12 @@ func (ctx *ReaperContext) getPods() error {
 		return err
 	}
 	ctx.AllPods = allPods
+
+	namespaces, err := ctx.KubernetesClient.CoreV1().Namespaces().List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	ctx.AllNamespaces = namespaces
 
 	log.Infof("found %v pods", len(allPods.Items))
 

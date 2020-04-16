@@ -128,6 +128,11 @@ func createFakePods(pods []FakePod, ctx *ReaperContext) {
 			},
 		}
 
+		if c.isNamespaceExcluded {
+			annotations := map[string]string{NamespaceExclusionAnnotationKey: NamespaceExclusionAnnotationValue}
+			pod.SetAnnotations(annotations)
+		}
+
 		if c.isTerminating {
 			if c.terminatingTime.IsZero() {
 				c.terminatingTime = time.Now()
@@ -205,6 +210,7 @@ type FakePod struct {
 	deletionGracePeriod    *int64
 	terminationGracePeriod *int64
 	isTerminating          bool
+	isNamespaceExcluded    bool
 	phase                  v1.PodPhase
 	terminatingTime        time.Time
 	containers             []v1.ContainerStatus
@@ -436,6 +442,42 @@ func TestReapFailedNegative(t *testing.T) {
 		ExpectedFailed:    0,
 		ExpectedReapable:  1,
 		ExpectedReaped:    1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestNamespaceExclusionPositive(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.TimeToReap = 5
+	testCase := ReaperUnitTest{
+		TestDescription: "Namespace Exclusion - should exclude namespace with annotation",
+		Pods: []FakePod{
+			{
+				isTerminating:       true,
+				isNamespaceExcluded: true,
+				terminatingTime:     time.Now().Add(time.Duration(-11) * time.Minute),
+			},
+			{
+				phase: v1.PodSucceeded,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodCompletedReason, time.Now().Add(time.Duration(-11)*time.Minute)),
+					getContainerStatus("container-2", PodCompletedReason, time.Now().Add(time.Duration(-15)*time.Minute)),
+				},
+			},
+			{
+				phase: v1.PodFailed,
+				containers: []v1.ContainerStatus{
+					getContainerStatus("container-1", PodFailedReason, time.Now().Add(time.Duration(-50)*time.Minute)),
+					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-80)*time.Minute)),
+				},
+			},
+		},
+		FakeReaper:          reaper,
+		ExpectedTerminating: 1,
+		ExpectedCompleted:   1,
+		ExpectedFailed:      1,
+		ExpectedReapable:    3,
+		ExpectedReaped:      3,
 	}
 	testCase.Run(t, false)
 }
