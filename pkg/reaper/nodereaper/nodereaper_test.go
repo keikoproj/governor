@@ -40,6 +40,15 @@ import (
 
 var loggingEnabled bool
 
+type SkipLabel string
+const (
+	DisableReaper SkipLabel = reaperDisableLabelKey
+	DisableUnreadyReaper SkipLabel = reapUnreadyDisabledLabelKey
+	DisableUnknownReaper SkipLabel = reapUnknownDisabledLabelKey
+	DisableFlappyReaper SkipLabel = reapFlappyDisabledLabelKey
+	DisableOldReaper SkipLabel = reapOldDisabledLabelKey
+)
+
 func init() {
 	flag.BoolVar(&loggingEnabled, "logging-enabled", false, "Enable Reaper Logs")
 }
@@ -217,14 +226,43 @@ func loadFakeAPI(ctx *ReaperContext) {
 	}
 }
 
-func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
-	for _, n := range nodes {
+func createNodeLabels(nodes []FakeNode, ctx *ReaperContext, skipLabels []SkipLabel) []map[string]string {
+	var ret []map[string]string
+	//numSkipLabel := 0
+	//if len(numSkipLabel_opt) > 0 {
+	//	numSkipLabel = numSkipLabel_opt[0]
+	//}
+	//if numSkipLabel > len(nodes) {
+	//	fmt.Println("Requested number of nodes to be skipped is greater than the given list of nodes. Defaulting to list of nodes size.")
+	//	numSkipLabel = len(nodes)
+	//}
+	for i, n := range nodes {
 		nodeLabels := make(map[string]string)
 		if n.isMaster {
 			nodeLabels["kubernetes.io/role"] = "master"
 		} else {
 			nodeLabels["kubernetes.io/role"] = "node"
 		}
+
+		if skipLabels != nil && len(skipLabels) > i  && len(string(skipLabels[i])) > 0{
+			nodeLabels[string(skipLabels[i])] = "true"
+		}
+
+		ret = append(ret, nodeLabels)
+	}
+	return ret
+}
+
+
+func createFakeNodes(nodes []FakeNode, ctx *ReaperContext, skipLabels []SkipLabel) {
+	nodeLabelsList := createNodeLabels(nodes, ctx, skipLabels)
+	for i, n := range nodes {
+		nodeLabels := nodeLabelsList[i]
+		//if n.isMaster {
+		//	nodeLabels["kubernetes.io/role"] = "master"
+		//} else {
+		//	nodeLabels["kubernetes.io/role"] = "node"
+		//}
 
 		creationTimestamp := metav1.Time{Time: time.Now()}
 		if n.ageMinutes != 0 {
@@ -420,7 +458,52 @@ func createFakeAwsAuth(a FakeASG, i []*ec2.Instance) ReaperAwsAuth {
 
 func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 	awsAuth := createFakeAwsAuth(u.InstanceGroup, u.FakeInstances)
-	createFakeNodes(u.Nodes, u.FakeReaper)
+	createFakeNodes(u.Nodes, u.FakeReaper, []SkipLabel{})
+	createFakeEvents(u.Events, u.FakeReaper)
+	start := time.Now()
+	runFakeReaper(u.FakeReaper, awsAuth)
+	secondsSince := int(time.Since(start).Seconds())
+
+	if timeTest {
+		if secondsSince != u.ExpectedDurationSeconds {
+			t.Fatalf("expected Duration: %vs, got: %vs", u.ExpectedDurationSeconds, secondsSince)
+		}
+		return
+	}
+
+	if len(u.FakeReaper.UnreadyNodes) != u.ExpectedUnready {
+		t.Fatalf("expected Unready: %v, got: %v", u.ExpectedUnready, len(u.FakeReaper.UnreadyNodes))
+	}
+
+	if len(u.FakeReaper.DrainableInstances) != u.ExpectedDrainable {
+		t.Fatalf("expected Drainable: %v, got: %v", u.ExpectedDrainable, len(u.FakeReaper.DrainableInstances))
+	}
+
+	if len(u.FakeReaper.ReapableInstances) != u.ExpectedReapable {
+		t.Fatalf("expected Reapable: %v, got: %v", u.ExpectedReapable, len(u.FakeReaper.ReapableInstances))
+	}
+
+	if len(u.FakeReaper.AgeDrainReapableInstances) != u.ExpectedOldReapable {
+		t.Fatalf("expected Age Reapable: %v, got: %v", u.ExpectedOldReapable, len(u.FakeReaper.AgeDrainReapableInstances))
+	}
+
+	if u.FakeReaper.DrainedInstances != u.ExpectedDrained {
+		t.Fatalf("expected Drained: %v, got: %v", u.ExpectedDrained, u.FakeReaper.DrainedInstances)
+	}
+
+	if u.FakeReaper.TerminatedInstances != u.ExpectedTerminated {
+		t.Fatalf("expected Terminated: %v, got: %v", u.ExpectedTerminated, u.FakeReaper.TerminatedInstances)
+	}
+	if len(u.ExpectedKillOrder) != 0 {
+		if !reflect.DeepEqual(u.FakeReaper.AgeKillOrder, u.ExpectedKillOrder) {
+			t.Fatalf("expected KillOrder: %v, got: %v", u.ExpectedKillOrder, u.FakeReaper.AgeKillOrder)
+		}
+	}
+}
+
+func (u *ReaperUnitTest) RunWithSkipLabel(t *testing.T, timeTest bool, skipLabels []SkipLabel) {
+	awsAuth := createFakeAwsAuth(u.InstanceGroup, u.FakeInstances)
+	createFakeNodes(u.Nodes, u.FakeReaper, skipLabels)
 	createFakeEvents(u.Events, u.FakeReaper)
 	start := time.Now()
 	runFakeReaper(u.FakeReaper, awsAuth)
@@ -1390,4 +1473,226 @@ func TestProviderIDParser(t *testing.T) {
 	if providerRegion != expectedRegion {
 		t.Fatalf("expected Region: %v, got: %v", expectedRegion, providerRegion)
 	}
+}
+
+func TestSkipLabelReaper(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnknown = true
+	reaper.ReapUnready = true
+	reaper.AsgValidation = true
+	reaper.FlapCount = 4
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableReaper label detection - skip reaping of any node if it has this label",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-old",
+				state:      "Ready",
+				ageMinutes: 43100,
+			},
+			{
+				nodeName: "node-flappy",
+				state:    "Ready",
+			},
+			{
+				nodeName:   "node-unknown",
+				state:      "Unknown",
+				lastTransitionMinutes: 6,
+			},
+			{
+				nodeName:   "node-unready",
+				state:      "NotReady",
+				lastTransitionMinutes: 6,
+			},
+		},
+		Events: []FakeEvent{
+			{
+				node:   "node-flappy",
+				count:  4,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+		},
+		FakeReaper:        	 reaper,
+		ExpectedUnready:   	 2,
+		ExpectedReapable:  	 0,
+		ExpectedDrainable:	 0,
+		ExpectedOldReapable: 0,
+		ExpectedTerminated:	 0,
+		ExpectedDrained:   	 0,
+	}
+	skipLabels := make([]SkipLabel, len(testCase.Nodes))
+	for i := 0; i < len(testCase.Nodes); i++ {
+		skipLabels[i] = DisableReaper
+	}
+	testCase.RunWithSkipLabel(t, false, skipLabels)
+}
+
+func TestSkipLabelUnknownNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnknown = true
+	reaper.AsgValidation = true
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableUnknownReaper label Detection - unknown nodes with skip label are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   1,
+			Unhealthy: 0,
+			Desired:   1,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-unknown-1",
+				state:      "Unknown",
+				lastTransitionMinutes: 6,
+			},
+			{
+				nodeName:   "node-unknown-2",
+				state:      "Unknown",
+				lastTransitionMinutes: 6,
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    2,
+		ExpectedReapable:   1,
+		ExpectedDrainable:  0,
+		ExpectedTerminated: 1,
+		ExpectedDrained:    0,
+	}
+	skipLabels := make([]SkipLabel, len(testCase.Nodes))
+	skipLabels[0] = DisableUnknownReaper
+	testCase.RunWithSkipLabel(t, false, skipLabels)
+}
+
+func TestSkipLabelUnreadyNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnready = true
+	reaper.AsgValidation = true
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableUnreadyReaper label Detection - unready nodes with skip label are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   1,
+			Unhealthy: 0,
+			Desired:   1,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-unready-1",
+				state:      "NotReady",
+				lastTransitionMinutes: 6,
+			},
+			{
+				nodeName:   "node-unready-2",
+				state:      "NotReady",
+				lastTransitionMinutes: 6,
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    2,
+		ExpectedReapable:   1,
+		ExpectedDrainable:  0,
+		ExpectedTerminated: 1,
+		ExpectedDrained:    0,
+	}
+	skipLabels := make([]SkipLabel, len(testCase.Nodes))
+	skipLabels[0] = DisableUnreadyReaper
+	testCase.RunWithSkipLabel(t, false, skipLabels)
+}
+
+func TestSkipLabelOldNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableOldReaper label Detection - old nodes with skip label are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-old-1",
+				state:      "Ready",
+				ageMinutes: 43100,
+			},
+			{
+				nodeName:   "node-old-2",
+				state:      "Ready",
+				ageMinutes: 43100,
+			},
+		},
+		FakeReaper:        	 reaper,
+		ExpectedUnready:   	 0,
+		ExpectedOldReapable: 1,
+		ExpectedTerminated:	 1,
+		ExpectedDrained:   	 1,
+	}
+	skipLabels := make([]SkipLabel, len(testCase.Nodes))
+	skipLabels[0] = DisableOldReaper
+	testCase.RunWithSkipLabel(t, false, skipLabels)
+}
+
+func TestSkipLabelFlappyNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.FlapCount = 4
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableFlappyReaper label Detection - flappy nodes with skip label are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
+				state:    "Ready",
+			},
+			{
+				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
+				state:    "Ready",
+			},
+		},
+		Events: []FakeEvent{
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  3,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  1,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+			{
+				node:   "ip-10-10-10-11.us-west-2.compute.local",
+				count:  4,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    0,
+		ExpectedReapable:   1,
+		ExpectedDrainable:  1,
+		ExpectedTerminated: 1,
+		ExpectedDrained:    1,
+	}
+	skipLabels := make([]SkipLabel, len(testCase.Nodes))
+	skipLabels[0] = DisableFlappyReaper
+	testCase.RunWithSkipLabel(t, false, skipLabels)
+
 }

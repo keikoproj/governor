@@ -4,3 +4,4 @@ _output/*
 bin
 bin/*
 .DS_Store
+.idea
