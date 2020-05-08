@@ -228,14 +228,6 @@ func loadFakeAPI(ctx *ReaperContext) {
 
 func createNodeLabels(nodes []FakeNode, ctx *ReaperContext, skipLabels []SkipLabel) []map[string]string {
 	var ret []map[string]string
-	//numSkipLabel := 0
-	//if len(numSkipLabel_opt) > 0 {
-	//	numSkipLabel = numSkipLabel_opt[0]
-	//}
-	//if numSkipLabel > len(nodes) {
-	//	fmt.Println("Requested number of nodes to be skipped is greater than the given list of nodes. Defaulting to list of nodes size.")
-	//	numSkipLabel = len(nodes)
-	//}
 	for i, n := range nodes {
 		nodeLabels := make(map[string]string)
 		if n.isMaster {
@@ -258,11 +250,6 @@ func createFakeNodes(nodes []FakeNode, ctx *ReaperContext, skipLabels []SkipLabe
 	nodeLabelsList := createNodeLabels(nodes, ctx, skipLabels)
 	for i, n := range nodes {
 		nodeLabels := nodeLabelsList[i]
-		//if n.isMaster {
-		//	nodeLabels["kubernetes.io/role"] = "master"
-		//} else {
-		//	nodeLabels["kubernetes.io/role"] = "node"
-		//}
 
 		creationTimestamp := metav1.Time{Time: time.Now()}
 		if n.ageMinutes != 0 {
