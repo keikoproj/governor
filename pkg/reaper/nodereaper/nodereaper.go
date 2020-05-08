@@ -34,10 +34,15 @@ import (
 var log = logrus.New()
 
 const (
-	ageUnreapableAnnotationKey = "governor.keikoproj.io/age-unreapable"
-	stateAnnotationKey         = "governor.keikoproj.io/state"
-	terminatedStateName        = "termination-issued"
-	drainingStateName          = "draining"
+	ageUnreapableAnnotationKey  = "governor.keikoproj.io/age-unreapable"
+	stateAnnotationKey          = "governor.keikoproj.io/state"
+	terminatedStateName         = "termination-issued"
+	drainingStateName           = "draining"
+	reaperDisableLabelKey       = "governor.keikoproj.io/node-reaper-disabled"
+	reapUnreadyDisabledLabelKey	= "governor.keikoproj.io/reap-unready-disabled"
+	reapUnknownDisabledLabelKey	= "governor.keikoproj.io/reap-unknown-disabled"
+	reapFlappyDisabledLabelKey	= "governor.keikoproj.io/reap-flappy-disabled"
+	reapOldDisabledLabelKey		= "governor.keikoproj.io/reap-old-disabled"
 )
 
 // Validate command line arguments
@@ -293,7 +298,7 @@ func (ctx *ReaperContext) deriveAgeDrainReapableNodes() error {
 
 		// Drain-Reap old nodes
 		if ctx.ReapOld {
-			if !nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") {
+			if !nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") && !hasSkipLabel(node, reapOldDisabledLabelKey){
 				if nodeIsAgeReapable(nodeAgeMinutes, ageThreshold) {
 					log.Infof("node %v is drain-reapable !! State = OldAge, Diff = %v/%v", nodeName, nodeAgeMinutes, ageThreshold)
 					ctx.addAgeDrainReapable(nodeName, nodeInstanceID, nodeAgeMinutes)
@@ -321,7 +326,7 @@ func (ctx *ReaperContext) deriveFlappyDrainReapableNodes() error {
 
 		// Drain-Reap flappy nodes
 		if ctx.ReapFlappy {
-			if nodeIsFlappy(events, nodeName, countThreshold, "NodeReady") {
+			if nodeIsFlappy(events, nodeName, countThreshold, "NodeReady") && !hasSkipLabel(node, reapFlappyDisabledLabelKey)  {
 				log.Infof("node %v is drain-reapable !! State = ReadinessFlapping", nodeName)
 				ctx.addDrainable(nodeName, nodeInstanceID)
 				ctx.addReapable(nodeName, nodeInstanceID)
@@ -392,7 +397,7 @@ func (ctx *ReaperContext) deriveReapableNodes() error {
 			continue
 		}
 
-		if ctx.ReapUnready && nodeStateIsNotReady(&node) {
+		if ctx.ReapUnready && nodeStateIsNotReady(&node) && !hasSkipLabel(node, reapUnreadyDisabledLabelKey) {
 			if nodeMeetsReapAfterThreshold(ctx.TimeToReap, lastStateDurationIntervalMinutes) {
 				log.Infof("node %v is reapable !! State = NotReady, diff: %.2f/%v", nodeName, lastStateDurationIntervalMinutes, ctx.TimeToReap)
 				ctx.addReapable(nodeName, nodeInstanceID)
@@ -402,7 +407,7 @@ func (ctx *ReaperContext) deriveReapableNodes() error {
 			}
 		}
 
-		if ctx.ReapUnknown && nodeStateIsUnknown(&node) {
+		if ctx.ReapUnknown && nodeStateIsUnknown(&node) && !hasSkipLabel(node, reapUnknownDisabledLabelKey) {
 			if nodeMeetsReapAfterThreshold(ctx.TimeToReap, lastStateDurationIntervalMinutes) {
 				log.Infof("node %v is reapable !! State = Unknown, diff: %.2f/%v", nodeName, lastStateDurationIntervalMinutes, ctx.TimeToReap)
 				ctx.addReapable(nodeName, nodeInstanceID)
@@ -620,7 +625,7 @@ func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 	log.Infof("found %v nodes, %v pods, and %v events", len(ctx.AllNodes), len(ctx.AllPods), len(ctx.AllEvents))
 	for _, node := range nodeList.Items {
 		ctx.NodeInstanceIDs[getNodeInstanceID(&node)] = node.Name
-		if nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node) {
+		if (nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node)) {
 			log.Infof("node %v is not ready", node.ObjectMeta.Name)
 			ctx.UnreadyNodes = append(ctx.UnreadyNodes, node)
 		}
@@ -735,4 +740,8 @@ func nodeIsFlappy(events []v1.Event, name string, threshold int32, reason string
 		}
 	}
 	return false
+}
+
+func hasSkipLabel(node v1.Node, label string) bool {
+	return node.ObjectMeta.Labels[reaperDisableLabelKey] == "true" || node.ObjectMeta.Labels[label] == "true"
 }
