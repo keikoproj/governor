@@ -217,30 +217,25 @@ func loadFakeAPI(ctx *ReaperContext) {
 	}
 }
 
-func createNodeLabels(nodes []FakeNode, ctx *ReaperContext, skipLabels []string) []map[string]string {
-	var ret []map[string]string
-	for i, n := range nodes {
-		nodeLabels := make(map[string]string)
-		if n.isMaster {
-			nodeLabels["kubernetes.io/role"] = "master"
-		} else {
-			nodeLabels["kubernetes.io/role"] = "node"
-		}
-
-		if skipLabels != nil && len(skipLabels) > i  && len(skipLabels[i]) > 0{
-			nodeLabels[skipLabels[i]] = "true"
-		}
-
-		ret = append(ret, nodeLabels)
+func createNodeLabels(node FakeNode, ctx *ReaperContext) map[string]string {
+	nodeLabels := make(map[string]string)
+	if node.isMaster {
+		nodeLabels["kubernetes.io/role"] = "master"
+	} else {
+		nodeLabels["kubernetes.io/role"] = "node"
 	}
-	return ret
+
+	for key, value := range node.nodeLabels {
+		nodeLabels[key] = value
+	}
+
+	return nodeLabels
 }
 
 
-func createFakeNodes(nodes []FakeNode, ctx *ReaperContext, skipLabels []string) {
-	nodeLabelsList := createNodeLabels(nodes, ctx, skipLabels)
-	for i, n := range nodes {
-		nodeLabels := nodeLabelsList[i]
+func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
+	for _, n := range nodes {
+		nodeLabels := createNodeLabels(n, ctx)
 
 		creationTimestamp := metav1.Time{Time: time.Now()}
 		if n.ageMinutes != 0 {
@@ -436,7 +431,7 @@ func createFakeAwsAuth(a FakeASG, i []*ec2.Instance) ReaperAwsAuth {
 
 func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 	awsAuth := createFakeAwsAuth(u.InstanceGroup, u.FakeInstances)
-	createFakeNodes(u.Nodes, u.FakeReaper, u.NodeLabels)
+	createFakeNodes(u.Nodes, u.FakeReaper)
 	createFakeEvents(u.Events, u.FakeReaper)
 	start := time.Now()
 	runFakeReaper(u.FakeReaper, awsAuth)
@@ -487,7 +482,6 @@ type ReaperUnitTest struct {
 	InstanceGroup           FakeASG
 	FakeReaper              *ReaperContext
 	FakeInstances           []*ec2.Instance
-	NodeLabels				[]string
 	ExpectedTerminated      int
 	ExpectedDrained         int
 	ExpectedReapable        int
@@ -515,6 +509,7 @@ type FakeNode struct {
 	unreadyPods           int
 	lostPods              int
 	ageMinutes            int
+	nodeLabels            map[string]string
 }
 type FakePod struct {
 	podName       string
@@ -1430,20 +1425,24 @@ func TestSkipLabelReaper(t *testing.T) {
 				nodeName:   "node-old",
 				state:      "Ready",
 				ageMinutes: 43100,
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
 			},
 			{
 				nodeName: "node-flappy",
 				state:    "Ready",
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
 			},
 			{
 				nodeName:   "node-unknown",
 				state:      "Unknown",
 				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
 			},
 			{
 				nodeName:   "node-unready",
 				state:      "NotReady",
 				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
 			},
 		},
 		Events: []FakeEvent{
@@ -1462,11 +1461,11 @@ func TestSkipLabelReaper(t *testing.T) {
 		ExpectedTerminated:	 0,
 		ExpectedDrained:   	 0,
 	}
-	skipLabels := make([]string, len(testCase.Nodes))
-	for i := 0; i < len(testCase.Nodes); i++ {
-		skipLabels[i] = reaperDisableLabelKey
-	}
-	testCase.NodeLabels = skipLabels
+	//skipLabels := make([]string, len(testCase.Nodes))
+	//for i := 0; i < len(testCase.Nodes); i++ {
+	//	skipLabels[i] = reaperDisableLabelKey
+	//}
+	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1488,6 +1487,7 @@ func TestSkipLabelUnknownNodes(t *testing.T) {
 				nodeName:   "node-unknown-1",
 				state:      "Unknown",
 				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnknownDisabledLabelKey: "true"},
 			},
 			{
 				nodeName:   "node-unknown-2",
@@ -1502,9 +1502,9 @@ func TestSkipLabelUnknownNodes(t *testing.T) {
 		ExpectedTerminated: 1,
 		ExpectedDrained:    0,
 	}
-	skipLabels := make([]string, len(testCase.Nodes))
-	skipLabels[0] = reapUnknownDisabledLabelKey
-	testCase.NodeLabels = skipLabels
+	//skipLabels := make([]string, len(testCase.Nodes))
+	//skipLabels[0] = reapUnknownDisabledLabelKey
+	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1526,6 +1526,7 @@ func TestSkipLabelUnreadyNodes(t *testing.T) {
 				nodeName:   "node-unready-1",
 				state:      "NotReady",
 				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnreadyDisabledLabelKey: "true"},
 			},
 			{
 				nodeName:   "node-unready-2",
@@ -1540,9 +1541,9 @@ func TestSkipLabelUnreadyNodes(t *testing.T) {
 		ExpectedTerminated: 1,
 		ExpectedDrained:    0,
 	}
-	skipLabels := make([]string, len(testCase.Nodes))
-	skipLabels[0] = reapUnreadyDisabledLabelKey
-	testCase.NodeLabels = skipLabels
+	//skipLabels := make([]string, len(testCase.Nodes))
+	//skipLabels[0] = reapUnreadyDisabledLabelKey
+	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1562,6 +1563,7 @@ func TestSkipLabelOldNodes(t *testing.T) {
 				nodeName:   "node-old-1",
 				state:      "Ready",
 				ageMinutes: 43100,
+				nodeLabels: map[string]string{reapOldDisabledLabelKey: "true"},
 			},
 			{
 				nodeName:   "node-old-2",
@@ -1575,9 +1577,9 @@ func TestSkipLabelOldNodes(t *testing.T) {
 		ExpectedTerminated:	 1,
 		ExpectedDrained:   	 1,
 	}
-	skipLabels := make([]string, len(testCase.Nodes))
-	skipLabels[0] = reapOldDisabledLabelKey
-	testCase.NodeLabels = skipLabels
+	//skipLabels := make([]string, len(testCase.Nodes))
+	//skipLabels[0] = reapOldDisabledLabelKey
+	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1595,8 +1597,9 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 		},
 		Nodes: []FakeNode{
 			{
-				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
-				state:    "Ready",
+				nodeName:   "ip-10-10-10-10.us-west-2.compute.local",
+				state:      "Ready",
+				nodeLabels: map[string]string{reapFlappyDisabledLabelKey: "true"},
 			},
 			{
 				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
@@ -1630,9 +1633,9 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 		ExpectedTerminated: 1,
 		ExpectedDrained:    1,
 	}
-	skipLabels := make([]string, len(testCase.Nodes))
-	skipLabels[0] = reapFlappyDisabledLabelKey
-	testCase.NodeLabels = skipLabels
+	//skipLabels := make([]string, len(testCase.Nodes))
+	//skipLabels[0] = reapFlappyDisabledLabelKey
+	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 
 }
