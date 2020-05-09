@@ -1413,7 +1413,7 @@ func TestSkipLabelReaper(t *testing.T) {
 	reaper.FlapCount = 4
 
 	testCase := ReaperUnitTest{
-		TestDescription: "DisableReaper label detection - skip reaping of any node if it has this label",
+		TestDescription: "DisableReaper label detection - skip reaping of any node if it has this label with value 'true'",
 		InstanceGroup: FakeASG{
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   2,
@@ -1461,11 +1461,6 @@ func TestSkipLabelReaper(t *testing.T) {
 		ExpectedTerminated:	 0,
 		ExpectedDrained:   	 0,
 	}
-	//skipLabels := make([]string, len(testCase.Nodes))
-	//for i := 0; i < len(testCase.Nodes); i++ {
-	//	skipLabels[i] = reaperDisableLabelKey
-	//}
-	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1475,7 +1470,7 @@ func TestSkipLabelUnknownNodes(t *testing.T) {
 	reaper.AsgValidation = true
 
 	testCase := ReaperUnitTest{
-		TestDescription: "DisableUnknownReaper label Detection - unknown nodes with skip label are skipped from being reaped",
+		TestDescription: "DisableUnknownReaper label Detection - unknown nodes with skip label as 'true' are skipped from being reaped",
 		InstanceGroup: FakeASG{
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   1,
@@ -1493,6 +1488,7 @@ func TestSkipLabelUnknownNodes(t *testing.T) {
 				nodeName:   "node-unknown-2",
 				state:      "Unknown",
 				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnknownDisabledLabelKey: "false"},
 			},
 		},
 		FakeReaper:         reaper,
@@ -1502,9 +1498,6 @@ func TestSkipLabelUnknownNodes(t *testing.T) {
 		ExpectedTerminated: 1,
 		ExpectedDrained:    0,
 	}
-	//skipLabels := make([]string, len(testCase.Nodes))
-	//skipLabels[0] = reapUnknownDisabledLabelKey
-	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1514,7 +1507,7 @@ func TestSkipLabelUnreadyNodes(t *testing.T) {
 	reaper.AsgValidation = true
 
 	testCase := ReaperUnitTest{
-		TestDescription: "DisableUnreadyReaper label Detection - unready nodes with skip label are skipped from being reaped",
+		TestDescription: "DisableUnreadyReaper label Detection - unready nodes with skip label as 'true' are skipped from being reaped",
 		InstanceGroup: FakeASG{
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   1,
@@ -1532,6 +1525,7 @@ func TestSkipLabelUnreadyNodes(t *testing.T) {
 				nodeName:   "node-unready-2",
 				state:      "NotReady",
 				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnreadyDisabledLabelKey: "false"},
 			},
 		},
 		FakeReaper:         reaper,
@@ -1541,9 +1535,6 @@ func TestSkipLabelUnreadyNodes(t *testing.T) {
 		ExpectedTerminated: 1,
 		ExpectedDrained:    0,
 	}
-	//skipLabels := make([]string, len(testCase.Nodes))
-	//skipLabels[0] = reapUnreadyDisabledLabelKey
-	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1551,7 +1542,7 @@ func TestSkipLabelOldNodes(t *testing.T) {
 	reaper := newFakeReaperContext()
 
 	testCase := ReaperUnitTest{
-		TestDescription: "DisableOldReaper label Detection - old nodes with skip label are skipped from being reaped",
+		TestDescription: "DisableOldReaper label Detection - old nodes with skip label as 'true' are skipped from being reaped",
 		InstanceGroup: FakeASG{
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   2,
@@ -1569,6 +1560,7 @@ func TestSkipLabelOldNodes(t *testing.T) {
 				nodeName:   "node-old-2",
 				state:      "Ready",
 				ageMinutes: 43100,
+				nodeLabels: map[string]string{reapOldDisabledLabelKey: "false"},
 			},
 		},
 		FakeReaper:        	 reaper,
@@ -1577,9 +1569,6 @@ func TestSkipLabelOldNodes(t *testing.T) {
 		ExpectedTerminated:	 1,
 		ExpectedDrained:   	 1,
 	}
-	//skipLabels := make([]string, len(testCase.Nodes))
-	//skipLabels[0] = reapOldDisabledLabelKey
-	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 }
 
@@ -1588,7 +1577,7 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 	reaper.FlapCount = 4
 
 	testCase := ReaperUnitTest{
-		TestDescription: "DisableFlappyReaper label Detection - flappy nodes with skip label are skipped from being reaped",
+		TestDescription: "DisableFlappyReaper label Detection - flappy nodes with skip label as 'true' are skipped from being reaped",
 		InstanceGroup: FakeASG{
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   2,
@@ -1604,6 +1593,7 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 			{
 				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
 				state:    "Ready",
+				nodeLabels: map[string]string{reapFlappyDisabledLabelKey: "false"},
 			},
 		},
 		Events: []FakeEvent{
@@ -1633,9 +1623,6 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 		ExpectedTerminated: 1,
 		ExpectedDrained:    1,
 	}
-	//skipLabels := make([]string, len(testCase.Nodes))
-	//skipLabels[0] = reapFlappyDisabledLabelKey
-	//testCase.NodeLabels = skipLabels
 	testCase.Run(t, false)
 
 }
