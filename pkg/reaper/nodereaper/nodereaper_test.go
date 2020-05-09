@@ -217,14 +217,25 @@ func loadFakeAPI(ctx *ReaperContext) {
 	}
 }
 
+func createNodeLabels(node FakeNode, ctx *ReaperContext) map[string]string {
+	nodeLabels := make(map[string]string)
+	if node.isMaster {
+		nodeLabels["kubernetes.io/role"] = "master"
+	} else {
+		nodeLabels["kubernetes.io/role"] = "node"
+	}
+
+	for key, value := range node.nodeLabels {
+		nodeLabels[key] = value
+	}
+
+	return nodeLabels
+}
+
+
 func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
 	for _, n := range nodes {
-		nodeLabels := make(map[string]string)
-		if n.isMaster {
-			nodeLabels["kubernetes.io/role"] = "master"
-		} else {
-			nodeLabels["kubernetes.io/role"] = "node"
-		}
+		nodeLabels := createNodeLabels(n, ctx)
 
 		creationTimestamp := metav1.Time{Time: time.Now()}
 		if n.ageMinutes != 0 {
@@ -463,6 +474,7 @@ func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 	}
 }
 
+
 type ReaperUnitTest struct {
 	TestDescription         string
 	Nodes                   []FakeNode
@@ -497,6 +509,7 @@ type FakeNode struct {
 	unreadyPods           int
 	lostPods              int
 	ageMinutes            int
+	nodeLabels            map[string]string
 }
 type FakePod struct {
 	podName       string
@@ -1390,4 +1403,226 @@ func TestProviderIDParser(t *testing.T) {
 	if providerRegion != expectedRegion {
 		t.Fatalf("expected Region: %v, got: %v", expectedRegion, providerRegion)
 	}
+}
+
+func TestSkipLabelReaper(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnknown = true
+	reaper.ReapUnready = true
+	reaper.AsgValidation = true
+	reaper.FlapCount = 4
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableReaper label detection - skip reaping of any node if it has this label with value 'true'",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-old",
+				state:      "Ready",
+				ageMinutes: 43100,
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
+			},
+			{
+				nodeName: "node-flappy",
+				state:    "Ready",
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
+			},
+			{
+				nodeName:   "node-unknown",
+				state:      "Unknown",
+				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
+			},
+			{
+				nodeName:   "node-unready",
+				state:      "NotReady",
+				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
+			},
+		},
+		Events: []FakeEvent{
+			{
+				node:   "node-flappy",
+				count:  4,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+		},
+		FakeReaper:        	 reaper,
+		ExpectedUnready:   	 2,
+		ExpectedReapable:  	 0,
+		ExpectedDrainable:	 0,
+		ExpectedOldReapable: 0,
+		ExpectedTerminated:	 0,
+		ExpectedDrained:   	 0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestSkipLabelUnknownNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnknown = true
+	reaper.AsgValidation = true
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableUnknownReaper label Detection - unknown nodes with skip label as 'true' are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   1,
+			Unhealthy: 0,
+			Desired:   1,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-unknown-1",
+				state:      "Unknown",
+				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnknownDisabledLabelKey: "true"},
+			},
+			{
+				nodeName:   "node-unknown-2",
+				state:      "Unknown",
+				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnknownDisabledLabelKey: "false"},
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    2,
+		ExpectedReapable:   1,
+		ExpectedDrainable:  0,
+		ExpectedTerminated: 1,
+		ExpectedDrained:    0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestSkipLabelUnreadyNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnready = true
+	reaper.AsgValidation = true
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableUnreadyReaper label Detection - unready nodes with skip label as 'true' are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   1,
+			Unhealthy: 0,
+			Desired:   1,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-unready-1",
+				state:      "NotReady",
+				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnreadyDisabledLabelKey: "true"},
+			},
+			{
+				nodeName:   "node-unready-2",
+				state:      "NotReady",
+				lastTransitionMinutes: 6,
+				nodeLabels: map[string]string{reapUnreadyDisabledLabelKey: "false"},
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    2,
+		ExpectedReapable:   1,
+		ExpectedDrainable:  0,
+		ExpectedTerminated: 1,
+		ExpectedDrained:    0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestSkipLabelOldNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableOldReaper label Detection - old nodes with skip label as 'true' are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-old-1",
+				state:      "Ready",
+				ageMinutes: 43100,
+				nodeLabels: map[string]string{reapOldDisabledLabelKey: "true"},
+			},
+			{
+				nodeName:   "node-old-2",
+				state:      "Ready",
+				ageMinutes: 43100,
+				nodeLabels: map[string]string{reapOldDisabledLabelKey: "false"},
+			},
+		},
+		FakeReaper:        	 reaper,
+		ExpectedUnready:   	 0,
+		ExpectedOldReapable: 1,
+		ExpectedTerminated:	 1,
+		ExpectedDrained:   	 1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestSkipLabelFlappyNodes(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.FlapCount = 4
+
+	testCase := ReaperUnitTest{
+		TestDescription: "DisableFlappyReaper label Detection - flappy nodes with skip label as 'true' are skipped from being reaped",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   2,
+			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "ip-10-10-10-10.us-west-2.compute.local",
+				state:      "Ready",
+				nodeLabels: map[string]string{reapFlappyDisabledLabelKey: "true"},
+			},
+			{
+				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
+				state:    "Ready",
+				nodeLabels: map[string]string{reapFlappyDisabledLabelKey: "false"},
+			},
+		},
+		Events: []FakeEvent{
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  3,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  1,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+			{
+				node:   "ip-10-10-10-11.us-west-2.compute.local",
+				count:  4,
+				reason: "NodeReady",
+				kind:   "Node",
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    0,
+		ExpectedReapable:   1,
+		ExpectedDrainable:  1,
+		ExpectedTerminated: 1,
+		ExpectedDrained:    1,
+	}
+	testCase.Run(t, false)
+
 }
