@@ -293,7 +293,10 @@ func (ctx *ReaperContext) deriveFailedPods() {
 			}
 		}
 
+		// include pods which have no containerstatuses, such as evicted pods
 		if len(times) == 0 {
+			log.Infof("%v/%v is reapable !! pod in failed state for unknown diff: ??/%v", podNamespace, podName, ctx.ReapFailedAfter)
+			ctx.FailedPods[podName] = podNamespace
 			continue
 		}
 

@@ -352,6 +352,10 @@ func TestReapCompletedFailedDisable(t *testing.T) {
 					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-80)*time.Minute)),
 				},
 			},
+			{
+				phase:      v1.PodFailed,
+				containers: []v1.ContainerStatus{},
+			},
 		},
 		FakeReaper:        reaper,
 		ExpectedCompleted: 0,
@@ -439,11 +443,15 @@ func TestReapFailedPositive(t *testing.T) {
 					getContainerStatus("container-2", PodFailedReason, time.Now().Add(time.Duration(-10)*time.Minute)),
 				},
 			},
+			{
+				phase:      v1.PodFailed,
+				containers: []v1.ContainerStatus{},
+			},
 		},
 		FakeReaper:       reaper,
-		ExpectedFailed:   1,
-		ExpectedReapable: 1,
-		ExpectedReaped:   1,
+		ExpectedFailed:   2,
+		ExpectedReapable: 2,
+		ExpectedReaped:   2,
 	}
 	testCase.Run(t, false)
 }
