@@ -173,6 +173,7 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.GhostInstances = make(map[string]string)
 	ctx.ClusterInstancesData = make(map[string]float64)
 	ctx.NodeInstanceIDs = make(map[string]string)
+	ctx.ReapTainted = make([]v1.Taint, 0)
 	ctx.AgeDrainReapableInstances = make([]AgeDrainReapableInstance, 0)
 	ctx.AgeKillOrder = make([]string, 0)
 	// Default Flags
@@ -231,7 +232,6 @@ func createNodeLabels(node FakeNode, ctx *ReaperContext) map[string]string {
 
 	return nodeLabels
 }
-
 
 func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
 	for _, n := range nodes {
@@ -335,6 +335,7 @@ func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
 			Labels:            nodeLabels,
 		}, Spec: v1.NodeSpec{
 			ProviderID: n.providerID,
+			Taints:     n.nodeTaints,
 		}, Status: v1.NodeStatus{
 			Conditions: nodeConditions,
 		}}
@@ -412,6 +413,7 @@ func runFakeReaper(ctx *ReaperContext, awsAuth ReaperAwsAuth) {
 	ctx.deriveFlappyDrainReapableNodes()
 	ctx.deriveAgeDrainReapableNodes()
 	ctx.deriveGhostDrainReapableNodes(awsAuth)
+	ctx.deriveTaintDrainReapableNodes()
 	ctx.deriveReapableNodes()
 	ctx.reapUnhealthyNodes(awsAuth)
 	ctx.reapOldNodes(awsAuth)
@@ -474,7 +476,6 @@ func (u *ReaperUnitTest) Run(t *testing.T, timeTest bool) {
 	}
 }
 
-
 type ReaperUnitTest struct {
 	TestDescription         string
 	Nodes                   []FakeNode
@@ -509,6 +510,7 @@ type FakeNode struct {
 	unreadyPods           int
 	lostPods              int
 	ageMinutes            int
+	nodeTaints            []v1.Taint
 	nodeLabels            map[string]string
 }
 type FakePod struct {
@@ -623,6 +625,149 @@ func TestReapOldPositive(t *testing.T) {
 		ExpectedTerminated:  3,
 		ExpectedDrained:     3,
 		ExpectedKillOrder:   []string{"node-3", "node-1", "node-2"},
+	}
+	testCase.Run(t, false)
+}
+
+func TestReapTaintedPositive(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapTainted = []v1.Taint{
+		{
+			Key:       "key",
+			Value:     "value",
+			Effect:    "effect",
+			TimeAdded: &metav1.Time{Time: time.Time{}},
+		},
+		{
+			Key:       "key",
+			Effect:    "effect",
+			TimeAdded: &metav1.Time{Time: time.Time{}},
+		},
+		{
+			Key:       "key",
+			TimeAdded: &metav1.Time{Time: time.Time{}},
+		},
+	}
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Tainted - should reap tainted nodes",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   4,
+			Unhealthy: 0,
+			Desired:   4,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-1",
+				state:      "Ready",
+				ageMinutes: 60,
+				nodeTaints: []v1.Taint{
+					{
+						Key:       "key",
+						Value:     "value",
+						Effect:    "effect",
+						TimeAdded: &metav1.Time{Time: time.Time{}},
+					},
+				},
+			},
+			{
+				nodeName:   "node-2",
+				state:      "Ready",
+				ageMinutes: 120,
+				nodeTaints: []v1.Taint{
+					{
+						Key:       "key",
+						Effect:    "effect",
+						TimeAdded: &metav1.Time{Time: time.Time{}},
+					},
+				},
+			},
+			{
+				nodeName:   "node-3",
+				state:      "Ready",
+				ageMinutes: 240,
+				nodeTaints: []v1.Taint{
+					{
+						Key:       "key",
+						TimeAdded: &metav1.Time{Time: time.Time{}},
+					},
+				},
+			},
+			{
+				nodeName:   "node-4",
+				state:      "Ready",
+				ageMinutes: 10,
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedReapable:   3,
+		ExpectedTerminated: 3,
+		ExpectedDrainable:  3,
+		ExpectedDrained:    3,
+	}
+	testCase.Run(t, false)
+}
+
+func TestReapTaintedNegative(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapTainted = []v1.Taint{}
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Reap Tainted - should not reap tainted nodes if taints not provided",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   4,
+			Unhealthy: 0,
+			Desired:   4,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-1",
+				state:      "Ready",
+				ageMinutes: 60,
+				nodeTaints: []v1.Taint{
+					{
+						Key:       "key",
+						Value:     "value",
+						Effect:    "effect",
+						TimeAdded: &metav1.Time{Time: time.Time{}},
+					},
+				},
+			},
+			{
+				nodeName:   "node-2",
+				state:      "Ready",
+				ageMinutes: 120,
+				nodeTaints: []v1.Taint{
+					{
+						Key:       "key",
+						Effect:    "effect",
+						TimeAdded: &metav1.Time{Time: time.Time{}},
+					},
+				},
+			},
+			{
+				nodeName:   "node-3",
+				state:      "Ready",
+				ageMinutes: 240,
+				nodeTaints: []v1.Taint{
+					{
+						Key:       "key",
+						TimeAdded: &metav1.Time{Time: time.Time{}},
+					},
+				},
+			},
+			{
+				nodeName:   "node-4",
+				state:      "Ready",
+				ageMinutes: 60,
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedReapable:   0,
+		ExpectedTerminated: 0,
+		ExpectedDrained:    0,
 	}
 	testCase.Run(t, false)
 }
@@ -1428,21 +1573,21 @@ func TestSkipLabelReaper(t *testing.T) {
 				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
 			},
 			{
-				nodeName: "node-flappy",
-				state:    "Ready",
+				nodeName:   "node-flappy",
+				state:      "Ready",
 				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
 			},
 			{
-				nodeName:   "node-unknown",
-				state:      "Unknown",
+				nodeName:              "node-unknown",
+				state:                 "Unknown",
 				lastTransitionMinutes: 6,
-				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
+				nodeLabels:            map[string]string{reaperDisableLabelKey: "true"},
 			},
 			{
-				nodeName:   "node-unready",
-				state:      "NotReady",
+				nodeName:              "node-unready",
+				state:                 "NotReady",
 				lastTransitionMinutes: 6,
-				nodeLabels: map[string]string{reaperDisableLabelKey: "true"},
+				nodeLabels:            map[string]string{reaperDisableLabelKey: "true"},
 			},
 		},
 		Events: []FakeEvent{
@@ -1453,13 +1598,13 @@ func TestSkipLabelReaper(t *testing.T) {
 				kind:   "Node",
 			},
 		},
-		FakeReaper:        	 reaper,
-		ExpectedUnready:   	 2,
-		ExpectedReapable:  	 0,
-		ExpectedDrainable:	 0,
+		FakeReaper:          reaper,
+		ExpectedUnready:     2,
+		ExpectedReapable:    0,
+		ExpectedDrainable:   0,
 		ExpectedOldReapable: 0,
-		ExpectedTerminated:	 0,
-		ExpectedDrained:   	 0,
+		ExpectedTerminated:  0,
+		ExpectedDrained:     0,
 	}
 	testCase.Run(t, false)
 }
@@ -1479,16 +1624,16 @@ func TestSkipLabelUnknownNodes(t *testing.T) {
 		},
 		Nodes: []FakeNode{
 			{
-				nodeName:   "node-unknown-1",
-				state:      "Unknown",
+				nodeName:              "node-unknown-1",
+				state:                 "Unknown",
 				lastTransitionMinutes: 6,
-				nodeLabels: map[string]string{reapUnknownDisabledLabelKey: "true"},
+				nodeLabels:            map[string]string{reapUnknownDisabledLabelKey: "true"},
 			},
 			{
-				nodeName:   "node-unknown-2",
-				state:      "Unknown",
+				nodeName:              "node-unknown-2",
+				state:                 "Unknown",
 				lastTransitionMinutes: 6,
-				nodeLabels: map[string]string{reapUnknownDisabledLabelKey: "false"},
+				nodeLabels:            map[string]string{reapUnknownDisabledLabelKey: "false"},
 			},
 		},
 		FakeReaper:         reaper,
@@ -1516,16 +1661,16 @@ func TestSkipLabelUnreadyNodes(t *testing.T) {
 		},
 		Nodes: []FakeNode{
 			{
-				nodeName:   "node-unready-1",
-				state:      "NotReady",
+				nodeName:              "node-unready-1",
+				state:                 "NotReady",
 				lastTransitionMinutes: 6,
-				nodeLabels: map[string]string{reapUnreadyDisabledLabelKey: "true"},
+				nodeLabels:            map[string]string{reapUnreadyDisabledLabelKey: "true"},
 			},
 			{
-				nodeName:   "node-unready-2",
-				state:      "NotReady",
+				nodeName:              "node-unready-2",
+				state:                 "NotReady",
 				lastTransitionMinutes: 6,
-				nodeLabels: map[string]string{reapUnreadyDisabledLabelKey: "false"},
+				nodeLabels:            map[string]string{reapUnreadyDisabledLabelKey: "false"},
 			},
 		},
 		FakeReaper:         reaper,
@@ -1563,11 +1708,11 @@ func TestSkipLabelOldNodes(t *testing.T) {
 				nodeLabels: map[string]string{reapOldDisabledLabelKey: "false"},
 			},
 		},
-		FakeReaper:        	 reaper,
-		ExpectedUnready:   	 0,
+		FakeReaper:          reaper,
+		ExpectedUnready:     0,
 		ExpectedOldReapable: 1,
-		ExpectedTerminated:	 1,
-		ExpectedDrained:   	 1,
+		ExpectedTerminated:  1,
+		ExpectedDrained:     1,
 	}
 	testCase.Run(t, false)
 }
@@ -1591,8 +1736,8 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 				nodeLabels: map[string]string{reapFlappyDisabledLabelKey: "true"},
 			},
 			{
-				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
-				state:    "Ready",
+				nodeName:   "ip-10-10-10-11.us-west-2.compute.local",
+				state:      "Ready",
 				nodeLabels: map[string]string{reapFlappyDisabledLabelKey: "false"},
 			},
 		},

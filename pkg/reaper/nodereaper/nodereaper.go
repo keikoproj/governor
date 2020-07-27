@@ -16,9 +16,10 @@ limitations under the License.
 package nodereaper
 
 import (
-	"errors"
 	"fmt"
 	"os"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -26,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/keikoproj/governor/pkg/reaper/common"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,10 +41,10 @@ const (
 	terminatedStateName         = "termination-issued"
 	drainingStateName           = "draining"
 	reaperDisableLabelKey       = "governor.keikoproj.io/node-reaper-disabled"
-	reapUnreadyDisabledLabelKey	= "governor.keikoproj.io/reap-unready-disabled"
-	reapUnknownDisabledLabelKey	= "governor.keikoproj.io/reap-unknown-disabled"
-	reapFlappyDisabledLabelKey	= "governor.keikoproj.io/reap-flappy-disabled"
-	reapOldDisabledLabelKey		= "governor.keikoproj.io/reap-old-disabled"
+	reapUnreadyDisabledLabelKey = "governor.keikoproj.io/reap-unready-disabled"
+	reapUnknownDisabledLabelKey = "governor.keikoproj.io/reap-unknown-disabled"
+	reapFlappyDisabledLabelKey  = "governor.keikoproj.io/reap-flappy-disabled"
+	reapOldDisabledLabelKey     = "governor.keikoproj.io/reap-old-disabled"
 )
 
 // Validate command line arguments
@@ -64,6 +66,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.NodeInstanceIDs = make(map[string]string)
 	ctx.AgeDrainReapableInstances = make([]AgeDrainReapableInstance, 0)
 	ctx.AgeKillOrder = make([]string, 0)
+	ctx.ReapTainted = make([]v1.Taint, 0)
 	ctx.EC2Region = args.EC2Region
 	ctx.ReapOld = args.ReapOld
 	ctx.MaxKill = args.MaxKill
@@ -74,6 +77,41 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	log.Infof("Max Kills = %v", ctx.MaxKill)
 	log.Infof("ASG Validation = %t", ctx.AsgValidation)
 	log.Infof("Post Reap Throttle = %v seconds", ctx.ReapThrottle)
+
+	for _, t := range args.ReapTainted {
+		var key, value string
+		var effect v1.TaintEffect
+
+		parts := strings.Split(t, ":")
+
+		switch len(parts) {
+		case 1:
+			key = parts[0]
+		case 2:
+			effect = v1.TaintEffect(parts[1])
+			KV := strings.Split(parts[0], "=")
+
+			if len(KV) > 2 {
+				return errors.Errorf("invalid taint %v provided", t)
+			}
+
+			key = KV[0]
+
+			if len(KV) == 2 {
+				value = KV[1]
+			}
+		default:
+			return errors.Errorf("invalid taint %v provided", t)
+		}
+
+		taint := v1.Taint{
+			Key:       key,
+			Value:     value,
+			Effect:    effect,
+			TimeAdded: &metav1.Time{Time: time.Time{}},
+		}
+		ctx.ReapTainted = append(ctx.ReapTainted, taint)
+	}
 
 	if ctx.MaxKill < 1 {
 		err := fmt.Errorf("--max-kill-nodes must be set to a number greater than or equal to 1")
@@ -245,7 +283,14 @@ func Run(args *Args) error {
 	log.Infoln("starting drain condition check for ghost nodes")
 	err = ctx.deriveGhostDrainReapableNodes(awsAuth)
 	if err != nil {
-		log.Errorf("failed to derive age drain-reapable nodes, %v", err)
+		log.Errorf("failed to derive ghost nodes, %v", err)
+		return err
+	}
+
+	log.Infoln("starting drain condition check for tainted nodes")
+	err = ctx.deriveTaintDrainReapableNodes()
+	if err != nil {
+		log.Errorf("failed to derive taint drain-reapable nodes, %v", err)
 		return err
 	}
 
@@ -281,6 +326,24 @@ func Run(args *Args) error {
 	return nil
 }
 
+func (ctx *ReaperContext) deriveTaintDrainReapableNodes() error {
+	if len(ctx.ReapTainted) == 0 {
+		return nil
+	}
+
+	log.Infoln("scanning for taint drain-reapable nodes")
+	for _, node := range ctx.AllNodes {
+		nodeInstanceID := getNodeInstanceID(&node)
+		for _, t := range ctx.ReapTainted {
+			if nodeIsTainted(t, node) {
+				ctx.addDrainable(node.Name, nodeInstanceID)
+				ctx.addReapable(node.Name, nodeInstanceID)
+			}
+		}
+	}
+	return nil
+}
+
 // Handle age-reapable nodes
 func (ctx *ReaperContext) deriveAgeDrainReapableNodes() error {
 	log.Infoln("scanning for age drain-reapable nodes")
@@ -298,7 +361,7 @@ func (ctx *ReaperContext) deriveAgeDrainReapableNodes() error {
 
 		// Drain-Reap old nodes
 		if ctx.ReapOld {
-			if !nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") && !hasSkipLabel(node, reapOldDisabledLabelKey){
+			if !nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") && !hasSkipLabel(node, reapOldDisabledLabelKey) {
 				if nodeIsAgeReapable(nodeAgeMinutes, ageThreshold) {
 					log.Infof("node %v is drain-reapable !! State = OldAge, Diff = %v/%v", nodeName, nodeAgeMinutes, ageThreshold)
 					ctx.addAgeDrainReapable(nodeName, nodeInstanceID, nodeAgeMinutes)
@@ -326,7 +389,7 @@ func (ctx *ReaperContext) deriveFlappyDrainReapableNodes() error {
 
 		// Drain-Reap flappy nodes
 		if ctx.ReapFlappy {
-			if nodeIsFlappy(events, nodeName, countThreshold, "NodeReady") && !hasSkipLabel(node, reapFlappyDisabledLabelKey)  {
+			if nodeIsFlappy(events, nodeName, countThreshold, "NodeReady") && !hasSkipLabel(node, reapFlappyDisabledLabelKey) {
 				log.Infof("node %v is drain-reapable !! State = ReadinessFlapping", nodeName)
 				ctx.addDrainable(nodeName, nodeInstanceID)
 				ctx.addReapable(nodeName, nodeInstanceID)
@@ -625,7 +688,7 @@ func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 	log.Infof("found %v nodes, %v pods, and %v events", len(ctx.AllNodes), len(ctx.AllPods), len(ctx.AllEvents))
 	for _, node := range nodeList.Items {
 		ctx.NodeInstanceIDs[getNodeInstanceID(&node)] = node.Name
-		if (nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node)) {
+		if nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node) {
 			log.Infof("node %v is not ready", node.ObjectMeta.Name)
 			ctx.UnreadyNodes = append(ctx.UnreadyNodes, node)
 		}
@@ -718,6 +781,17 @@ func autoScalingGroupIsStable(w ReaperAwsAuth, instance string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func nodeIsTainted(taint v1.Taint, node v1.Node) bool {
+	for _, t := range node.Spec.Taints {
+		// ignore timeAdded
+		t.TimeAdded = &metav1.Time{Time: time.Time{}}
+		if reflect.DeepEqual(taint, t) {
+			return true
+		}
+	}
+	return false
 }
 
 func nodeIsFlappy(events []v1.Event, name string, threshold int32, reason string) bool {

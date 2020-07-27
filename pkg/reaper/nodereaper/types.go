@@ -56,6 +56,7 @@ type Args struct {
 	ReapThrottle                 int64
 	AgeReapThrottle              int64
 	ReapAfter                    float64
+	ReapTainted                  []string
 }
 
 // ReaperContext holds the context of the node-reaper and target cluster
@@ -85,6 +86,7 @@ type ReaperContext struct {
 	FlapCount                    int32
 	MaxKill                      int
 	TimeToReap                   float64
+	ReapTainted                  []v1.Taint
 	// runtime
 	UnreadyNodes              []v1.Node
 	AllNodes                  []v1.Node

@@ -62,5 +62,5 @@ func init() {
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapUnjoinedThresholdMinutes, "reap-unjoined-threshold-minutes", 15, "Reap N minute old nodes")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ReapUnjoinedKey, "reap-unjoined-tag-key", "", "BE CAREFUL! EC2 tag key that identfies a joining node")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ReapUnjoinedValue, "reap-unjoined-tag-value", "", "BE CAREFUL! EC2 tag value that identfies a joining node")
-
+	nodeReapCmd.Flags().StringArrayVar(&nodeReaperArgs.ReapTainted, "reap-tainted", []string{}, "marks nodes with a given taint reapable, must be in format of comma separated taints key=value:effect, key:effect or key")
 }
