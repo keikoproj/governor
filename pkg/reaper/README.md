@@ -218,6 +218,11 @@ Ghost nodes are nodes which point to an instance-id which is invalid or already 
 
 Unjoined nodes are nodes which fail to join the cluster and remain unjoined while taking capacity from the scaling groups. By default this feature is not enabled, but can be enabled by setting `--reap-unjoined=true`, you must also set `--reap-unjoined-threshold-minutes` which is the number of minutes passed since EC2 launch time to consider a node unjoined (we recommend setting a relatively high number here, e.g. 15), also `--reap-unjoined-tag-key` and `--reap-unjoined-tag-value` are required in order to identify the instances which failed to join, and should match an EC2 tag on the cluster nodes. when this is enabled, node-reaper will actively look at all EC2 instances with the mentioned key/value tag, and make sure they are joined in the cluster as nodes by looking at their `ProviderID`, if a matching node is not found and the EC2 instance has been up for more than the configured thershold, the instance will be terminated.
 
+### Reaping Tainted Nodes
+
+You can chose to mark nodes with certain taints reapable by using the `--reap-tainted` flag and providing a comma separated list of taint strings.
+for example, `--reap-tainted NodeWithImpairedVolumes=true:NoSchedule,MyTaint:NoSchedule`, would mean nodes having either one of these taints will be drained & terminated. You can use the following formats for describing a taint - key=value:effect, key:effect, key.
+
 ### Example
 
 ```text
