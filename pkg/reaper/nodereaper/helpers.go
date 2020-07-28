@@ -29,10 +29,45 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
+
+func parseTaint(t string) (v1.Taint, bool, error) {
+	var key, value string
+	var effect v1.TaintEffect
+	var taint v1.Taint
+
+	parts := strings.Split(t, ":")
+
+	switch len(parts) {
+	case 1:
+		key = parts[0]
+	case 2:
+		effect = v1.TaintEffect(parts[1])
+		KV := strings.Split(parts[0], "=")
+
+		if len(KV) > 2 {
+			return taint, false, errors.Errorf("invalid taint %v provided", t)
+		}
+
+		key = KV[0]
+
+		if len(KV) == 2 {
+			value = KV[1]
+		}
+	default:
+		return taint, false, errors.Errorf("invalid taint %v provided", t)
+	}
+
+	taint.Key = key
+	taint.Value = value
+	taint.Effect = effect
+	taint.TimeAdded = &metav1.Time{Time: time.Time{}}
+	return taint, true, nil
+}
 
 func runCommand(call string, arg []string) (string, error) {
 	log.Infof("invoking >> %s %s", call, arg)

@@ -690,6 +690,7 @@ func TestReapTaintedPositive(t *testing.T) {
 				nodeTaints: []v1.Taint{
 					{
 						Key:       "key",
+						Effect:    "some-effect",
 						TimeAdded: &metav1.Time{Time: time.Time{}},
 					},
 				},
@@ -754,6 +755,7 @@ func TestReapTaintedNegative(t *testing.T) {
 				nodeTaints: []v1.Taint{
 					{
 						Key:       "key",
+						Effect:    "some-effect",
 						TimeAdded: &metav1.Time{Time: time.Time{}},
 					},
 				},
@@ -1770,4 +1772,100 @@ func TestSkipLabelFlappyNodes(t *testing.T) {
 	}
 	testCase.Run(t, false)
 
+}
+
+func TestParseTaint(t *testing.T) {
+
+	fullTaint := v1.Taint{
+		Key:       "fullTaint",
+		Value:     "value",
+		Effect:    "NoSchedule",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	keyEffectTaint := v1.Taint{
+		Key:       "keyEffectTaint",
+		Effect:    "NoSchedule",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	keyTaint := v1.Taint{
+		Key:       "keyTaint",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	emptyTaint := v1.Taint{
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	tests := []struct {
+		taintStr      string
+		expectedTaint v1.Taint
+	}{
+		{taintStr: "fullTaint=value:NoSchedule", expectedTaint: fullTaint},
+		{taintStr: "keyEffectTaint:NoSchedule", expectedTaint: keyEffectTaint},
+		{taintStr: "keyTaint", expectedTaint: keyTaint},
+		{taintStr: "invalid:taint:invalid=taint", expectedTaint: v1.Taint{}},
+		{taintStr: "invalid=taint=invalid:taint", expectedTaint: v1.Taint{}},
+		{taintStr: "", expectedTaint: emptyTaint},
+	}
+
+	for i, tc := range tests {
+		got, _, _ := parseTaint(tc.taintStr)
+		if !reflect.DeepEqual(got, tc.expectedTaint) {
+			t.Fatalf("test #%v: expected match: %+v, got: %+v", i, tc.expectedTaint, got)
+		}
+	}
+}
+
+func TestNodeIsTainted(t *testing.T) {
+	fullTaint := v1.Taint{
+		Key:       "fullTaint",
+		Value:     "value",
+		Effect:    "NoSchedule",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	keyEffectTaint := v1.Taint{
+		Key:       "keyEffectTaint",
+		Effect:    "NoSchedule",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	keyTaint := v1.Taint{
+		Key:       "keyTaint",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	otherTaint := v1.Taint{
+		Key:       "otherTaint",
+		Value:     "value",
+		Effect:    "NoSchedule",
+		TimeAdded: &metav1.Time{Time: time.Time{}},
+	}
+
+	taintedNode := v1.Node{
+		Spec: v1.NodeSpec{
+			Taints: []v1.Taint{fullTaint, keyEffectTaint, keyTaint},
+		},
+	}
+
+	tests := []struct {
+		taint       v1.Taint
+		node        v1.Node
+		shouldMatch bool
+	}{
+		{taint: fullTaint, node: taintedNode, shouldMatch: true},
+		{taint: keyEffectTaint, node: taintedNode, shouldMatch: true},
+		{taint: keyTaint, node: taintedNode, shouldMatch: true},
+		{taint: otherTaint, node: taintedNode, shouldMatch: false},
+		{taint: otherTaint, node: v1.Node{}, shouldMatch: false},
+	}
+
+	for i, tc := range tests {
+		got := nodeIsTainted(tc.taint, tc.node)
+		if !reflect.DeepEqual(got, tc.shouldMatch) {
+			t.Fatalf("test #%v: expected match: %t, got: %t", i, tc.shouldMatch, got)
+		}
+	}
 }

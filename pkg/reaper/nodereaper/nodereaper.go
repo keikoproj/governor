@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -79,37 +78,14 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	log.Infof("Post Reap Throttle = %v seconds", ctx.ReapThrottle)
 
 	for _, t := range args.ReapTainted {
-		var key, value string
-		var effect v1.TaintEffect
+		var taint v1.Taint
+		var ok bool
+		var err error
 
-		parts := strings.Split(t, ":")
-
-		switch len(parts) {
-		case 1:
-			key = parts[0]
-		case 2:
-			effect = v1.TaintEffect(parts[1])
-			KV := strings.Split(parts[0], "=")
-
-			if len(KV) > 2 {
-				return errors.Errorf("invalid taint %v provided", t)
-			}
-
-			key = KV[0]
-
-			if len(KV) == 2 {
-				value = KV[1]
-			}
-		default:
-			return errors.Errorf("invalid taint %v provided", t)
+		if taint, ok, err = parseTaint(t); !ok {
+			return errors.Wrap(err, "failed to parse taint")
 		}
 
-		taint := v1.Taint{
-			Key:       key,
-			Value:     value,
-			Effect:    effect,
-			TimeAdded: &metav1.Time{Time: time.Time{}},
-		}
 		ctx.ReapTainted = append(ctx.ReapTainted, taint)
 	}
 
@@ -787,6 +763,12 @@ func nodeIsTainted(taint v1.Taint, node v1.Node) bool {
 	for _, t := range node.Spec.Taints {
 		// ignore timeAdded
 		t.TimeAdded = &metav1.Time{Time: time.Time{}}
+
+		// handle key only match
+		if taint.Effect == v1.TaintEffect("") && taint.Value == "" && taint.Key == t.Key {
+			return true
+		}
+
 		if reflect.DeepEqual(taint, t) {
 			return true
 		}
