@@ -5,3 +5,4 @@ bin
 bin/*
 .DS_Store
 .idea/*
+vendor
