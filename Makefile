@@ -15,7 +15,7 @@ IMAGE ?= governor:latest
 all: clean build test
 
 build:
-	CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/keikoproj/governor/cmd/governor
+	GO111MODULE=on CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/keikoproj/governor/cmd/governor
 
 docker-build:
 	docker build -t $(IMAGE) .

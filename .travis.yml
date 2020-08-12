@@ -13,7 +13,7 @@ jobs:
 
     - stage: unit-test
       script:
-      - go test -v ./... -coverprofile ./coverage.txt
+      - GO111MODULE=on go test -v ./... -coverprofile ./coverage.txt
       - bash <(curl -s https://codecov.io/bash)
 
     - stage: publish-image
