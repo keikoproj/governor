@@ -130,6 +130,14 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	}
 	ctx.TimeToReap = args.ReapAfter
 
+	if args.ReconsiderUnreapableAfter < 10 {
+		err := fmt.Errorf("--reconsider-unreapable-after must be set to a number greater than or equal to 10")
+		log.Errorln(err)
+		return err
+	}
+
+	ctx.ReconsiderUnreapableAfter = args.ReconsiderUnreapableAfter
+
 	if args.ReapUnjoined {
 		if args.ReapUnjoinedThresholdMinutes < 10 {
 			err := fmt.Errorf("--reap-unjoined-threshold-minutes must be set to a number greater than or equal to 10")
@@ -157,6 +165,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	log.Infof("Reap Unready = %t, threshold = %v minutes", ctx.ReapUnready, ctx.TimeToReap)
 	log.Infof("Reap Ghost = %t, threshold = immediate", ctx.ReapGhost)
 	log.Infof("Reap Unjoined = %t, threshold = %v minutes by tag %v=%v", ctx.ReapUnjoined, ctx.ReapUnjoinedThresholdMinutes, ctx.ReapUnjoinedKey, ctx.ReapUnjoinedValue)
+	log.Infof("Reconsider Unreapable after = %v minutes", ctx.ReconsiderUnreapableAfter)
 
 	if !ctx.SoftReap {
 		log.Warnf("--soft-reap is off !! will not consider pods when reaping")
@@ -337,7 +346,7 @@ func (ctx *ReaperContext) deriveAgeDrainReapableNodes() error {
 
 		// Drain-Reap old nodes
 		if ctx.ReapOld {
-			if !nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") && !hasSkipLabel(node, reapOldDisabledLabelKey) {
+			if reconsiderUnreapableNode(node, ctx.ReconsiderUnreapableAfter) && !hasSkipLabel(node, reapOldDisabledLabelKey) {
 				if nodeIsAgeReapable(nodeAgeMinutes, ageThreshold) {
 					log.Infof("node %v is drain-reapable !! State = OldAge, Diff = %v/%v", nodeName, nodeAgeMinutes, ageThreshold)
 					ctx.addAgeDrainReapable(nodeName, nodeInstanceID, nodeAgeMinutes)
@@ -800,4 +809,40 @@ func nodeIsFlappy(events []v1.Event, name string, threshold int32, reason string
 
 func hasSkipLabel(node v1.Node, label string) bool {
 	return node.ObjectMeta.Labels[reaperDisableLabelKey] == "true" || node.ObjectMeta.Labels[label] == "true"
+}
+
+func reconsiderUnreapableNode(node v1.Node, reapableAfter float64) bool {
+	//For backward compatibilty
+	if nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") {
+		return true
+	}
+
+	lastUnreapableTimeStr := getAnnotationValue(node, ageUnreapableAnnotationKey)
+	if lastUnreapableTimeStr == "" {
+		return true
+	}
+
+	lastUnreapableTime, err := time.Parse(time.RFC3339, lastUnreapableTimeStr)
+
+	//invalid date time format
+	if err != nil {
+		log.Infof("failed to parse age unreapable annotation value: %s", err.Error())
+		return false
+	}
+
+	now := time.Now().UTC()
+	if now.Sub(lastUnreapableTime).Minutes() >= reapableAfter {
+		return true
+	}
+
+	return false
+}
+
+func getAnnotationValue(node v1.Node, annotationKey string) string {
+	for k, v := range node.ObjectMeta.Annotations {
+		if k == annotationKey {
+			return v
+		}
+	}
+	return ""
 }

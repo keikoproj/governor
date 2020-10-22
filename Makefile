@@ -28,7 +28,7 @@ clean:
 	rm -rf _output
 
 test:
-	go test -v ./... -coverprofile ./coverage.txt
+	CGO_ENABLED=0 go test -v ./... -coverprofile ./coverage.txt
 
 vtest:
 	go test -v ./... -coverprofile ./coverage.txt --logging-enabled
