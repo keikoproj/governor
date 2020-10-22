@@ -1869,3 +1869,117 @@ func TestNodeIsTainted(t *testing.T) {
 		}
 	}
 }
+
+func TestReconsiderUnreapableNode(t *testing.T) {
+	testCases := []struct {
+		Name                string
+		Node                v1.Node
+		ReapableAfter       float64
+		ReconsideUnreapable bool
+	}{
+		{
+			Name: "node without age unreapable annotation",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			ReapableAfter:       10,
+			ReconsideUnreapable: true,
+		},
+		{
+			Name: "node with age unreapable set to true",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						ageUnreapableAnnotationKey: "true",
+					},
+				},
+			},
+			ReapableAfter:       10,
+			ReconsideUnreapable: true,
+		},
+		{
+			Name: "node with over age unreapable date time",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						ageUnreapableAnnotationKey: time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339),
+					},
+				},
+			},
+			ReapableAfter:       10,
+			ReconsideUnreapable: true,
+		},
+		{
+			Name: "node with under age unreapable date time",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						ageUnreapableAnnotationKey: time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339),
+					},
+				},
+			},
+			ReapableAfter:       10,
+			ReconsideUnreapable: false,
+		},
+		{
+			Name: "node with invalid age unreapable date time format",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						ageUnreapableAnnotationKey: time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC1123),
+					},
+				},
+			},
+			ReapableAfter:       10,
+			ReconsideUnreapable: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		got := reconsiderUnreapableNode(tc.Node, tc.ReapableAfter)
+		if got != tc.ReconsideUnreapable {
+			t.Fatalf("test #%v: expected match: %t, got: %t", tc.Name, tc.ReconsideUnreapable, got)
+		}
+	}
+}
+
+func TestGetAnnotationValue(t *testing.T) {
+	testCases := []struct {
+		Name          string
+		Node          v1.Node
+		AnnotationKey string
+		ExpectedValue string
+	}{
+		{
+			Name: "invalid key",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			AnnotationKey: "key",
+			ExpectedValue: "",
+		},
+		{
+			Name: "with valid annotation key value",
+			Node: v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"key": "value",
+					},
+				},
+			},
+			AnnotationKey: "key",
+			ExpectedValue: "value",
+		},
+	}
+
+	for _, tc := range testCases {
+		got := getAnnotationValue(tc.Node, tc.AnnotationKey)
+		if got != tc.ExpectedValue {
+			t.Fatalf("test #%v: expected match: %s, got: %s", tc.Name, tc.ExpectedValue, got)
+		}
+	}
+}
