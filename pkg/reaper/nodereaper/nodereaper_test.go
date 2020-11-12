@@ -190,6 +190,7 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.TimeToReap = 5
 	ctx.ReapOldThresholdMinutes = 36000
 	ctx.MaxKill = 3
+	ctx.DrainTimeoutSeconds = 600
 	loadFakeAPI(&ctx)
 	return &ctx
 }
