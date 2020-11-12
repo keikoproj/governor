@@ -154,7 +154,7 @@ func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 			ctx.publishEvent(ctx.SelfNamespace, event)
 			if err.Error() == "command execution timed out" {
 				log.Warnf("failed to drain node %v, drain command timed-out", name)
-				ctx.annotateNode(name, ageUnreapableAnnotationKey, "true")
+				ctx.annotateNode(name, ageUnreapableAnnotationKey, getUTCNowStr())
 				ctx.uncordonNode(name, dryRun)
 				return err
 			}
@@ -421,4 +421,8 @@ func getInstanceIDByPrivateDNS(instances []*ec2.Instance, dnsName string) string
 		}
 	}
 	return ""
+}
+
+func getUTCNowStr() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
