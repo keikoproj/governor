@@ -80,7 +80,7 @@ func runCommand(call string, arg []string) (string, error) {
 	return string(out), err
 }
 
-func runCommandWithContext(call string, args []string, timeoutSeconds int) (string, error) {
+func runCommandWithContext(call string, args []string, timeoutSeconds int64) (string, error) {
 	// Create a new context and add a timeout to it
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
@@ -140,15 +140,13 @@ func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 	log.Infof("draining node %v", name)
 	drainArgs := []string{"drain", name, "--ignore-daemonsets=true", "--delete-local-data=true", "--force", "--grace-period=-1"}
 	drainCommand := ctx.KubectlLocalPath
-	// try draining for 10 minutes
-	drainTimeoutSeconds := 600
 	if dryRun {
 		log.Warnf("dry run is on, instance not drained")
 	} else {
 		if err := ctx.annotateNode(name, stateAnnotationKey, drainingStateName); err != nil {
 			log.Warnf("failed to update state annotation on node '%v'", name)
 		}
-		_, err := runCommandWithContext(drainCommand, drainArgs, drainTimeoutSeconds)
+		_, err := runCommandWithContext(drainCommand, drainArgs, ctx.DrainTimeoutSeconds)
 		if err != nil {
 			event := ctx.getUnreapableDrainFailureEvent(name, err.Error())
 			ctx.publishEvent(ctx.SelfNamespace, event)
