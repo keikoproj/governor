@@ -146,7 +146,8 @@ func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 		if err := ctx.annotateNode(name, stateAnnotationKey, drainingStateName); err != nil {
 			log.Warnf("failed to update state annotation on node '%v'", name)
 		}
-		_, err := runCommandWithContext(drainCommand, drainArgs, ctx.DrainTimeoutSeconds)
+		cmdOut, err := runCommandWithContext(drainCommand, drainArgs, ctx.DrainTimeoutSeconds)
+		log.Infof("drain command output: %s", cmdOut)
 		if err != nil {
 			event := ctx.getUnreapableDrainFailureEvent(name, err.Error())
 			ctx.publishEvent(ctx.SelfNamespace, event)
