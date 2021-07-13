@@ -47,6 +47,8 @@ type ReaperContext struct {
 	ReapablePodDisruptionBudgets               []policyv1beta1.PodDisruptionBudget
 	ClusterBlockingPodDisruptionBudgets        map[string][]policyv1beta1.PodDisruptionBudget
 	NamespacesWithMultiplePodDisruptionBudgets map[string][]policyv1beta1.PodDisruptionBudget
+	ReapablePodDisruptionBudgetsCount          int
+	ReapedPodDisruptionBudgetCount             int
 }
 
 func NewReaperContext(args *Args) *ReaperContext {

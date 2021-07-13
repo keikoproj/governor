@@ -44,6 +44,17 @@ func Run(args *Args) error {
 
 	ctx := NewReaperContext(args)
 
+	err := ctx.execute()
+	if err != nil {
+		return errors.Wrap(err, "execution failed")
+	}
+
+	return nil
+}
+
+func (ctx *ReaperContext) execute() error {
+	log.Info("pdb-reaper starting")
+
 	if err := ctx.scan(); err != nil {
 		return errors.Wrap(err, "failed to scan cluster")
 	}
@@ -51,7 +62,6 @@ func Run(args *Args) error {
 	if err := ctx.reap(); err != nil {
 		return errors.Wrap(err, "failed to reap PDBs")
 	}
-
 	return nil
 }
 
@@ -145,6 +155,8 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 			}
 			return errors.Wrapf(err, "failed to delete offending PDB %v", pdbNamespacedName(pdb))
 		}
+		ctx.ReapedPodDisruptionBudgetCount++
+
 	}
 	return nil
 }
@@ -238,6 +250,8 @@ func (ctx *ReaperContext) addReapablePodDisruptionBudget(pdb ...policyv1beta1.Po
 			return
 		}
 	}
+
+	ctx.ReapablePodDisruptionBudgetsCount += len(pdb)
 	ctx.ReapablePodDisruptionBudgets = append(ctx.ReapablePodDisruptionBudgets, pdb...)
 }
 
