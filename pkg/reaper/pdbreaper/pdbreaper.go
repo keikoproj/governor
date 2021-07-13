@@ -17,7 +17,9 @@ package pdbreaper
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/pkg/errors"
@@ -34,6 +36,16 @@ var log = logrus.New()
 const (
 	ReasonCrashLoopBackOff         = "CrashLoopBackOff"
 	CrashloopRestartCountThreshold = 3
+
+	EventReasonPodDisruptionBudgetDeleted = "PodDisruptionBudgetDeleted"
+	EventReasonBlockingDetected           = "BlockingPodDisruptionBudget"
+	EventReasonMultipleDetected           = "MultiplePodDisruptionBudgets"
+	EventReasonBlockingCrashLoopDetected  = "BlockingPodDisruptionBudgetWithCrashLoop"
+
+	EventMessageDeletedFmt   = "The PodDisruptionBudget %v has been deleted by pdb-reaper due to violation"
+	EventMessageBlockingFmt  = "The PodDisruptionBudget %v has been marked for deletion due to misconfiguration/not allowing disruptions"
+	EventMessageMultipleFmt  = "The PodDisruptionBudget %v has been marked for deletion due to multiple budgets targeting same pods"
+	EventMessageCrashLoopFmt = "The PodDisruptionBudget %v has been marked for deletion due to pods in CrashLoopBackOff blocking disruptions"
 )
 
 // Run is the main runner function for pdb-reaper, and will initialize and start the pdb-reaper
@@ -155,6 +167,10 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 			}
 			return errors.Wrapf(err, "failed to delete offending PDB %v", pdbNamespacedName(pdb))
 		}
+		err = ctx.publishEvent(pdb, EventReasonPodDisruptionBudgetDeleted, EventMessageDeletedFmt)
+		if err != nil {
+			log.Warnf(err.Error())
+		}
 		ctx.ReapedPodDisruptionBudgetCount++
 
 	}
@@ -186,6 +202,10 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 				if misconfigured {
 					log.Infof("PDB %v is marked reapable due to blocking configuration", pdbNamespacedName(pdb))
 					ctx.addReapablePodDisruptionBudget(pdb)
+					err = ctx.publishEvent(pdb, EventReasonBlockingDetected, EventMessageBlockingFmt)
+					if err != nil {
+						log.Warnf(err.Error())
+					}
 				}
 			}
 
@@ -193,6 +213,10 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 				if crashLoop := isPodsInCrashloop(pods); crashLoop {
 					log.Infof("PDB %v is marked reapable due to 1 or more targeted pods in crashloop: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
 					ctx.addReapablePodDisruptionBudget(pdb)
+					err = ctx.publishEvent(pdb, EventReasonBlockingCrashLoopDetected, EventMessageCrashLoopFmt)
+					if err != nil {
+						log.Warnf(err.Error())
+					}
 				}
 			}
 		}
@@ -229,6 +253,12 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 		if isContainDuplicatePods(namespacePodsWithBudget) {
 			log.Infof("PDBs %+v are marked reapable - pods %+v has multiple PDBs", pdbSliceNamespacedNames(pdbs), podSliceNamespacedNames(namespacePodsWithBudget))
 			ctx.addReapablePodDisruptionBudget(pdbs...)
+			for _, pdb := range pdbs {
+				err := ctx.publishEvent(pdb, EventReasonMultipleDetected, EventMessageMultipleFmt)
+				if err != nil {
+					log.Warnf(err.Error())
+				}
+			}
 		}
 	}
 	return nil
@@ -242,6 +272,40 @@ func (ctx *ReaperContext) listPodsWithSelector(namespace, selector string) ([]co
 	}
 	pods = append(pods, podList.Items...)
 	return pods, nil
+}
+
+func (ctx *ReaperContext) publishEvent(pdb policyv1beta1.PodDisruptionBudget, reason, msg string) error {
+	var (
+		pdbNamespace   = pdb.GetNamespace()
+		pdbName        = pdb.GetName()
+		namespacedName = pdbNamespacedName(pdb)
+	)
+
+	now := time.Now()
+	event := &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("pdb-reaper-%v", pdbName),
+			Namespace:    pdbNamespace,
+		},
+		InvolvedObject: corev1.ObjectReference{
+			Kind:            "PodDisruptionBudget",
+			Namespace:       pdbNamespace,
+			Name:            pdbName,
+			APIVersion:      pdb.APIVersion,
+			UID:             pdb.UID,
+			ResourceVersion: pdb.ResourceVersion,
+		},
+		Reason:         reason,
+		Message:        fmt.Sprintf(msg, namespacedName),
+		Type:           "Normal",
+		FirstTimestamp: metav1.NewTime(now),
+		LastTimestamp:  metav1.NewTime(now),
+	}
+	_, err := ctx.KubernetesClient.CoreV1().Events(pdbNamespace).Create(event)
+	if err != nil {
+		return errors.Wrap(err, "failed to publish event")
+	}
+	return nil
 }
 
 func (ctx *ReaperContext) addReapablePodDisruptionBudget(pdb ...policyv1beta1.PodDisruptionBudget) {

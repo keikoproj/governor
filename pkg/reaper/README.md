@@ -273,7 +273,9 @@ rules:
 
 ### What is a reapable PDB
 
-a PDB is considered reapable if it is blocking disruptions in specific scenarios. This is perticularly useful in pre-production environments where cluster tenants use PDBs incorrectly or leave pods around in crashloop while a PDB is in place.
+a PDB is considered reapable if it is blocking disruptions in specific scenarios. This is perticularly useful in pre-production environments where cluster tenants use PDBs incorrectly or leave pods around in crashloop while a PDB is in place. It can also be run in production with the `--dry-run` flag in order to have a good view of which PDBs might interrupt an update.
+
+Since pdb-reaper will not recreate the PDBs it deletes, deletion is particularly useful in cases where GitOps is used, which can re-create the PDBs at a later time.
 
 #### Blocking PDBs due to Misconfiguration
 
@@ -308,14 +310,40 @@ spec:
 
 #### Blocking PDBs due to Crashlooping Pods
 
-When all pods are in CrashLoopBackoff 
+When all pods are in CrashLoopBackOff, the PDB might allow zero disruption even if it is correctly configured, however it would be irrelevant to block the draining in this case since pods keep crashing. If there is atleast a single pod in the PDB's target which is CrashLoopBackOff, with more than 3 restarts, and the PDB is blocking (allowing zero disruptions), the PDB will be considered reapable.
 
 ```bash
 NAME                    READY   STATUS             RESTARTS   AGE
-nginx-5894696d4-t77mt   0/1     CrashLoopBackOff   3          65s
+nginx-5894696d4-t77mt   0/1     CrashLoopBackOff   4          65s
+nginx-5894696d4-d75sx   0/1     CrashLoopBackOff   4          65s
+nginx-5894696d4-hbj68   0/1     CrashLoopBackOff   4          65s
 ```
 
 #### Blocking PDBs due to multiple PDBs targeting same pods
+
+In some cases, users may create multiple PDBs which are targeting overlapping or same selectors, resulting in multiple PDBs watching the same pods. In such case, when a drain is attempted it will error out with the following message.
+
+```bash
+error: error when evicting pod "nginx-5894696d4-fprjv": This pod has more than one PodDisruptionBudget,
+which the eviction subresource does not support.
+```
+
+When multiple PDBs are detected in the same namespaces with overlapping pods, both are considered reapable.
+
+### Required RBAC Permissions
+
+```yaml
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["list", "delete"]
+```
+
 ### Usage
 
 ```text
