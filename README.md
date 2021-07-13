@@ -14,6 +14,10 @@ Two common problems observed in large Kubernetes clusters are:
 **node-reaper** provides the capability for worker nodes to be force terminated so that replacement ones come up.
 **pod-reaper** does a force termination of pods stuck in Terminating state for a certain amount of time.
 
+In some cases, on multi-tenant platforms, users can own PDBs which block node rotation/drain if they are misconfigured, pods are in crashloop backoff, or if multiple PDBs are targeting the same pods.
+
+**pdb-reaper** provides the capability for detecting PDBs in these conditions, and deleting them. This is especially useful for pre-production environments where pods might be left around in crashloop, or misconfigured PDBs may exist.
+
 ## Usage
 
 Assuming an AWS-hosted running kubernetes cluster:
@@ -25,6 +29,8 @@ kubectl create namespace governor
 kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governor/master/examples/node-reaper.yaml
 
 kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governor/master/examples/pod-reaper.yaml
+
+kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governor/master/examples/pdb-reaper.yaml
 ```
 
 ### Available Packages
@@ -33,6 +39,7 @@ kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governo
 | :--- | :--- | :---: |
 | node-reaper | terminates nodes in scaling groups | [node-reaper](pkg/reaper/README.md#node-reaper) |
 | pod-reaper | force terminates stuck pods | [pod-reaper](pkg/reaper/README.md#pod-reaper) |
+| pdb-reaper | deletes blocking PDBs | [pdb-reaper](pkg/reaper/README.md#pdb-reaper) |
 
 ## Release History
 

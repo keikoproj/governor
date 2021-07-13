@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: governor
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pdb-reaper
+  namespace: governor
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pdb-reaper
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["list", "delete"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pdb-reaper
+subjects:
+- kind: ServiceAccount
+  name: pdb-reaper
+  namespace: governor
+roleRef:
+  kind: ClusterRole
+  name: pdb-reaper
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: pdb-reaper
+  namespace: governor
+spec:
+  # Scan every 10 minutes
+  schedule: "*/10 * * * *"
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  # Disallow concurrent executions
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  backoffLimit: 0
+  jobTemplate:
+    spec:
+      # Terminate long running pods
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          serviceAccountName: pdb-reaper
+          restartPolicy: Never
+          containers:
+          - name: pdb-reaper
+            image: governor:latest
+            args:
+            - governor
+            - reap
+            - pdb
+            # Reap PDBs blocking when there are pods in crashloop backoff with N > 3 restarts
+            - --reap-crashloop=true

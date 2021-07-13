@@ -268,3 +268,66 @@ rules:
   resources: ["daemonsets"]
   verbs: ["get"]
 ```
+
+## PDB Reaper
+
+### What is a reapable PDB
+
+a PDB is considered reapable if it is blocking disruptions in specific scenarios. This is perticularly useful in pre-production environments where cluster tenants use PDBs incorrectly or leave pods around in crashloop while a PDB is in place.
+
+#### Blocking PDBs due to Misconfiguration
+
+In cases where a PDB is misconfigured, to allow 0 disruptions, it will always block node drains.
+For example, if maxUnavailable is set to 0, the PDB will forever block node drains.
+
+```yaml
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: misconfigured-pdb
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: nginx
+```
+
+Alternatively, if minAvailable is used and the value configured matches the number of pods, the PDB will be considered reapable.
+
+```yaml
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: misconfigured-pdb
+spec:
+  minAvailable: 100%
+  selector:
+    matchLabels:
+      app: nginx
+```
+
+#### Blocking PDBs due to Crashlooping Pods
+
+When all pods are in CrashLoopBackoff 
+
+```bash
+NAME                    READY   STATUS             RESTARTS   AGE
+nginx-5894696d4-t77mt   0/1     CrashLoopBackOff   3          65s
+```
+
+#### Blocking PDBs due to multiple PDBs targeting same pods
+### Usage
+
+```text
+Usage:
+  governor reap pdb [flags]
+
+Flags:
+      --dry-run              Will not actually delete PDBs
+  -h, --help                 help for pdb
+      --kubeconfig string    Absolute path to the kubeconfig file
+      --local-mode           Use cluster external auth
+      --reap-crashloop       Delete PDBs which are targeting a deployment whose pods are in a crashloop
+      --reap-misconfigured   Delete PDBs which are configured to not allow disruptions (default true)
+      --reap-multiple        Delete multiple PDBs which are targeting a single deployment (default true)
+```
