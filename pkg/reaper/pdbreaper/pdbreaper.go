@@ -129,7 +129,7 @@ func (ctx *ReaperContext) scan() error {
 		}
 		// if no pods match the selector / expected, it is non-blocking
 		if pdb.Status.ExpectedPods == 0 {
-			log.Infof("ignoring pdb %v since it is expecting 0 disruptions", pdbNamespacedName(pdb))
+			log.Infof("ignoring pdb %v since it is expecting 0 pods", pdbNamespacedName(pdb))
 			continue
 		}
 
@@ -375,12 +375,13 @@ func isPodsInCrashloop(pods []corev1.Pod, threshold int, allPods bool) bool {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Waiting != nil && containerStatus.RestartCount >= int32(threshold) {
 				if containerStatus.State.Waiting.Reason == ReasonCrashLoopBackOff {
+					fmt.Printf("crashing pod %v/%v\n", pod.GetNamespace(), pod.GetName())
 					crashingCount++
+					break
 				}
 			}
 		}
 	}
-
 	if !allPods {
 		if crashingCount > 0 {
 			return true
