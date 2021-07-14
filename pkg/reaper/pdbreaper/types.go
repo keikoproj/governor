@@ -27,12 +27,14 @@ import (
 
 // Args is the argument struct for pdb-reaper
 type Args struct {
-	K8sConfigPath     string
-	DryRun            bool
-	LocalMode         bool
-	ReapMisconfigured bool
-	ReapMultiple      bool
-	ReapCrashLoop     bool
+	K8sConfigPath         string
+	DryRun                bool
+	LocalMode             bool
+	ReapMisconfigured     bool
+	ReapMultiple          bool
+	ReapCrashLoop         bool
+	AllCrashLoop          bool
+	CrashLoopRestartCount int
 }
 
 // ReaperContext holds the context of the pdb-reaper and target cluster
@@ -44,6 +46,8 @@ type ReaperContext struct {
 	ReapMisconfigured                          bool
 	ReapMultiple                               bool
 	ReapCrashLoop                              bool
+	AllCrashLoop                               bool
+	CrashLoopRestartCount                      int
 	ReapablePodDisruptionBudgets               []policyv1beta1.PodDisruptionBudget
 	ClusterBlockingPodDisruptionBudgets        map[string][]policyv1beta1.PodDisruptionBudget
 	NamespacesWithMultiplePodDisruptionBudgets map[string][]policyv1beta1.PodDisruptionBudget
@@ -71,10 +75,18 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	ctx.ReapMisconfigured = args.ReapMisconfigured
 	ctx.ReapCrashLoop = args.ReapCrashLoop
 	ctx.ReapMultiple = args.ReapMultiple
+	ctx.AllCrashLoop = args.AllCrashLoop
+
+	if args.CrashLoopRestartCount < 1 {
+		return errors.Errorf("--crashloop-restart-count value cannot be less than 1")
+	}
+	ctx.CrashLoopRestartCount = args.CrashLoopRestartCount
 
 	log.Infof("Dry Run = %t", ctx.DryRun)
 	log.Infof("Reap Misconfigured PDBs = %t", ctx.ReapMisconfigured)
-	log.Infof("Reap PDBs blocked by CrashLoopBackoff = %v", ctx.ReapCrashLoop)
+	log.Infof("Reap PDBs blocked by CrashLoopBackOff = %v", ctx.ReapCrashLoop)
+	log.Infof("All pods must be in CrashLoopBackOff = %t", ctx.AllCrashLoop)
+	log.Infof("RestartCount Threshold = %v", ctx.CrashLoopRestartCount)
 	log.Infof("Reap Multiple PDBs targeting same deployment = %t", ctx.ReapMultiple)
 
 	if args.K8sConfigPath != "" {

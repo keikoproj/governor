@@ -310,7 +310,9 @@ spec:
 
 #### Blocking PDBs due to Crashlooping Pods
 
-When all pods are in CrashLoopBackOff, the PDB might allow zero disruption even if it is correctly configured, however it would be irrelevant to block the draining in this case since pods keep crashing. If there is atleast a single pod in the PDB's target which is CrashLoopBackOff, with more than 3 restarts, and the PDB is blocking (allowing zero disruptions), the PDB will be considered reapable.
+When all pods are in CrashLoopBackOff, the PDB might allow zero disruption even if it is correctly configured, however it would be irrelevant to block the draining in this case since pods keep crashing. If there is atleast a single pod in the PDB's target which is CrashLoopBackOff, with more than `--crashloop-restart-count` restarts, and the PDB is blocking (allowing zero disruptions), the PDB will be considered reapable.
+
+If `--all-crashloop` is set to false (default true), a single pod in CrashLoopBackOff with the above conditions will cause the PDB to be reapable.
 
 ```bash
 NAME                    READY   STATUS             RESTARTS   AGE
@@ -351,11 +353,13 @@ Usage:
   governor reap pdb [flags]
 
 Flags:
-      --dry-run              Will not actually delete PDBs
-  -h, --help                 help for pdb
-      --kubeconfig string    Absolute path to the kubeconfig file
-      --local-mode           Use cluster external auth
-      --reap-crashloop       Delete PDBs which are targeting a deployment whose pods are in a crashloop
-      --reap-misconfigured   Delete PDBs which are configured to not allow disruptions (default true)
-      --reap-multiple        Delete multiple PDBs which are targeting a single deployment (default true)
+      --all-crashloop                 Only deletes PDBs for crashlooping pods when all pods are in crashloop (default true)
+      --crashloop-restart-count int   Minimum restart count to when considering pods in crashloop (default 5)
+      --dry-run                       Will not actually delete PDBs
+  -h, --help                          help for pdb
+      --kubeconfig string             Absolute path to the kubeconfig file
+      --local-mode                    Use cluster external auth
+      --reap-crashloop                Delete PDBs which are targeting a deployment whose pods are in a crashloop
+      --reap-misconfigured            Delete PDBs which are configured to not allow disruptions (default true)
+      --reap-multiple                 Delete multiple PDBs which are targeting a single deployment (default true)
 ```

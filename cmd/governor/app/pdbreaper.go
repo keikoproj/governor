@@ -46,4 +46,7 @@ func init() {
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.ReapMisconfigured, "reap-misconfigured", true, "Delete PDBs which are configured to not allow disruptions")
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.ReapMultiple, "reap-multiple", true, "Delete multiple PDBs which are targeting a single deployment")
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.ReapCrashLoop, "reap-crashloop", false, "Delete PDBs which are targeting a deployment whose pods are in a crashloop")
+	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.AllCrashLoop, "all-crashloop", true, "Only deletes PDBs for crashlooping pods when all pods are in crashloop")
+	pdbReaperCmd.Flags().IntVar(&pdbReaperArgs.CrashLoopRestartCount, "crashloop-restart-count", 5, "Minimum restart count to when considering pods in crashloop")
+
 }

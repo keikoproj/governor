@@ -16,7 +16,11 @@ Two common problems observed in large Kubernetes clusters are:
 
 In some cases, on multi-tenant platforms, users can own PDBs which block node rotation/drain if they are misconfigured, pods are in crashloop backoff, or if multiple PDBs are targeting the same pods.
 
-**pdb-reaper** provides the capability for detecting PDBs in these conditions, and deleting them. This is especially useful for pre-production environments where pods might be left around in crashloop, or misconfigured PDBs may exist.
+**pdb-reaper** provides the capability for detecting PDBs in these conditions, and deleting them. This is especially useful for pre-production environments where pods might be left around in crashloop, or misconfigured PDBs may exist blocking node drains.
+
+When pdb-reaper deletes PDBs, it does **NOT** recreate them, this is useful when GitOps is used. We recommend using pdb-reaper in non-production environemnts or use the `--dry-run` flag to have event publishing without deletion of PDBs.
+
+There are many corner-cases where deleting PDBs might be dangerous, please consider such cases when using pdb-reaper.
 
 ## Usage
 

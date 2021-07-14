@@ -49,6 +49,8 @@ func _fakeReaperContext() *ReaperContext {
 		ReapMisconfigured:                          true,
 		ReapMultiple:                               true,
 		ReapCrashLoop:                              true,
+		CrashLoopRestartCount:                      5,
+		AllCrashLoop:                               false,
 		ReapablePodDisruptionBudgets:               make([]policyv1beta1.PodDisruptionBudget, 0),
 		ClusterBlockingPodDisruptionBudgets:        make(map[string][]policyv1beta1.PodDisruptionBudget),
 		NamespacesWithMultiplePodDisruptionBudgets: make(map[string][]policyv1beta1.PodDisruptionBudget),
@@ -285,8 +287,40 @@ func TestCrashloop(t *testing.T) {
 				_mockPDB("pdb-3", "namespace-3", nil, &intStrOneInt, _selector("app=app-3"), 1, 1),
 			},
 			Pods: []MockPod{
-				_mockPod("pod-1", "namespace-1", map[string]string{"app": "app-1"}, true, 4),
+				_mockPod("pod-1", "namespace-1", map[string]string{"app": "app-1"}, true, 6),
 				_mockPod("pod-2", "namespace-2", map[string]string{"app": "app-2"}, true, 1),
+				_mockPod("pod-3", "namespace-3", map[string]string{"app": "app-3"}, false, 0),
+			},
+		},
+		ExpectedReapableBudgets: 1,
+		ExpectedReapedBudgets:   1,
+	}
+	testCase.Run(t)
+}
+
+func TestAllCrashloop(t *testing.T) {
+	reaper := _fakeReaperContext()
+	reaper.AllCrashLoop = true
+	testCase := ReaperUnitTest{
+		TestDescription: "Tests execution scenario of pdb reaper with blocking PDBs due to crashloop",
+		FakeReaper:      reaper,
+		Mocks: KubernetesMockAPI{
+			Namespaces: []MockNamespace{
+				_mockNamespace("namespace-1"),
+				_mockNamespace("namespace-2"),
+				_mockNamespace("namespace-3"),
+			},
+			PDBs: []MockPDB{
+				_mockPDB("pdb-1", "namespace-1", nil, &intStrOneInt, _selector("app=app-1"), 1, 0),
+				_mockPDB("pdb-2", "namespace-2", nil, &intStrOneInt, _selector("app=app-2"), 1, 0),
+				_mockPDB("pdb-3", "namespace-3", nil, &intStrOneInt, _selector("app=app-3"), 1, 1),
+			},
+			Pods: []MockPod{
+				_mockPod("pod-1a", "namespace-1", map[string]string{"app": "app-1"}, true, 6),
+				_mockPod("pod-1b", "namespace-1", map[string]string{"app": "app-1"}, true, 6),
+				_mockPod("pod-1c", "namespace-1", map[string]string{"app": "app-1"}, true, 6),
+				_mockPod("pod-2a", "namespace-2", map[string]string{"app": "app-2"}, true, 6),
+				_mockPod("pod-2b", "namespace-2", map[string]string{"app": "app-2"}, false, 6),
 				_mockPod("pod-3", "namespace-3", map[string]string{"app": "app-3"}, false, 0),
 			},
 		},

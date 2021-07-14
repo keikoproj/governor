@@ -34,8 +34,7 @@ import (
 var log = logrus.New()
 
 const (
-	ReasonCrashLoopBackOff         = "CrashLoopBackOff"
-	CrashloopRestartCountThreshold = 3
+	ReasonCrashLoopBackOff = "CrashLoopBackOff"
 
 	EventReasonPodDisruptionBudgetDeleted = "PodDisruptionBudgetDeleted"
 	EventReasonBlockingDetected           = "BlockingPodDisruptionBudget"
@@ -210,8 +209,8 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 			}
 
 			if ctx.ReapCrashLoop {
-				if crashLoop := isPodsInCrashloop(pods); crashLoop {
-					log.Infof("PDB %v is marked reapable due to 1 or more targeted pods in crashloop: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
+				if crashLoop := isPodsInCrashloop(pods, ctx.CrashLoopRestartCount, ctx.AllCrashLoop); crashLoop {
+					log.Infof("PDB %v is marked reapable due to targeted pods in crashloop: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
 					ctx.addReapablePodDisruptionBudget(pdb)
 					err = ctx.publishEvent(pdb, EventReasonBlockingCrashLoopDetected, EventMessageCrashLoopFmt)
 					if err != nil {
@@ -369,14 +368,26 @@ func isContainDuplicatePods(pods []corev1.Pod) bool {
 	return false
 }
 
-func isPodsInCrashloop(pods []corev1.Pod) bool {
+func isPodsInCrashloop(pods []corev1.Pod, threshold int, allPods bool) bool {
+	podCount := len(pods)
+	var crashingCount int
 	for _, pod := range pods {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.State.Waiting != nil && containerStatus.RestartCount > CrashloopRestartCountThreshold {
+			if containerStatus.State.Waiting != nil && containerStatus.RestartCount >= int32(threshold) {
 				if containerStatus.State.Waiting.Reason == ReasonCrashLoopBackOff {
-					return true
+					crashingCount++
 				}
 			}
+		}
+	}
+
+	if !allPods {
+		if crashingCount > 0 {
+			return true
+		}
+	} else {
+		if crashingCount == podCount {
+			return true
 		}
 	}
 	return false
