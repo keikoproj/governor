@@ -140,7 +140,6 @@ func (ctx *ReaperContext) scan() error {
 }
 
 func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
-
 	for _, pdb := range ctx.ReapablePodDisruptionBudgets {
 		var (
 			name      = pdb.GetName()
@@ -156,7 +155,7 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 
 		if ctx.DryRun {
 			log.Warnf("DryRun is on, PDB %v will not be deleted", pdbNamespacedName(pdb))
-			return nil
+			continue
 		}
 
 		err = ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(namespace).Delete(name, &metav1.DeleteOptions{})
@@ -375,7 +374,6 @@ func isPodsInCrashloop(pods []corev1.Pod, threshold int, allPods bool) bool {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Waiting != nil && containerStatus.RestartCount >= int32(threshold) {
 				if containerStatus.State.Waiting.Reason == ReasonCrashLoopBackOff {
-					fmt.Printf("crashing pod %v/%v\n", pod.GetNamespace(), pod.GetName())
 					crashingCount++
 					break
 				}
