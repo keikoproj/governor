@@ -48,5 +48,5 @@ func init() {
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.ReapCrashLoop, "reap-crashloop", false, "Delete PDBs which are targeting a deployment whose pods are in a crashloop")
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.AllCrashLoop, "all-crashloop", true, "Only deletes PDBs for crashlooping pods when all pods are in crashloop")
 	pdbReaperCmd.Flags().IntVar(&pdbReaperArgs.CrashLoopRestartCount, "crashloop-restart-count", 5, "Minimum restart count to when considering pods in crashloop")
-
+	pdbReaperCmd.Flags().StringSliceVar(&pdbReaperArgs.ExcludedNamespaces, "excluded-namespaces", []string{}, "Namespaces excluded from scanning")
 }

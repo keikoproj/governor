@@ -108,6 +108,11 @@ func (ctx *ReaperContext) scan() error {
 
 	for _, pdb := range pdbs.Items {
 		namespace := pdb.GetNamespace()
+
+		if common.StringSliceContains(ctx.ExcludedNamespaces, namespace) {
+			log.Warnf("ignoring namespace %v since it's excluded", namespace)
+			continue
+		}
 		namespacedPDBs[namespace] = append(namespacedPDBs[namespace], pdb)
 	}
 
@@ -121,6 +126,11 @@ func (ctx *ReaperContext) scan() error {
 		var (
 			namespace = pdb.GetNamespace()
 		)
+
+		if common.StringSliceContains(ctx.ExcludedNamespaces, namespace) {
+			log.Warnf("ignoring namespace %v since it's excluded", namespace)
+			continue
+		}
 
 		// if pdb is allowing disruptions, it is non-blocking
 		if pdb.Status.PodDisruptionsAllowed != 0 {
@@ -371,6 +381,14 @@ func isPodsInCrashloop(pods []corev1.Pod, threshold int, allPods bool) bool {
 	podCount := len(pods)
 	var crashingCount int
 	for _, pod := range pods {
+		for _, containerStatus := range pod.Status.InitContainerStatuses {
+			if containerStatus.State.Waiting != nil && containerStatus.RestartCount >= int32(threshold) {
+				if containerStatus.State.Waiting.Reason == ReasonCrashLoopBackOff {
+					crashingCount++
+					break
+				}
+			}
+		}
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Waiting != nil && containerStatus.RestartCount >= int32(threshold) {
 				if containerStatus.State.Waiting.Reason == ReasonCrashLoopBackOff {

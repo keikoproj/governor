@@ -356,6 +356,7 @@ Flags:
       --all-crashloop                 Only deletes PDBs for crashlooping pods when all pods are in crashloop (default true)
       --crashloop-restart-count int   Minimum restart count to when considering pods in crashloop (default 5)
       --dry-run                       Will not actually delete PDBs
+      --excluded-namespaces strings   Namespaces excluded from scanning
   -h, --help                          help for pdb
       --kubeconfig string             Absolute path to the kubeconfig file
       --local-mode                    Use cluster external auth

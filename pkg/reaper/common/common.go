@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -110,4 +111,13 @@ func GetSelectorString(selector *metav1.LabelSelector) (string, error) {
 	}
 
 	return labels.SelectorFromSet(selectorMap).String(), nil
+}
+
+func StringSliceContains(sl []string, s string) bool {
+	for _, x := range sl {
+		if strings.EqualFold(x, s) {
+			return true
+		}
+	}
+	return false
 }

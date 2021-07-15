@@ -34,6 +34,7 @@ type Args struct {
 	ReapMultiple          bool
 	ReapCrashLoop         bool
 	AllCrashLoop          bool
+	ExcludedNamespaces    []string
 	CrashLoopRestartCount int
 }
 
@@ -51,12 +52,14 @@ type ReaperContext struct {
 	ReapablePodDisruptionBudgets               []policyv1beta1.PodDisruptionBudget
 	ClusterBlockingPodDisruptionBudgets        map[string][]policyv1beta1.PodDisruptionBudget
 	NamespacesWithMultiplePodDisruptionBudgets map[string][]policyv1beta1.PodDisruptionBudget
+	ExcludedNamespaces                         []string
 	ReapablePodDisruptionBudgetsCount          int
 	ReapedPodDisruptionBudgetCount             int
 }
 
 func NewReaperContext(args *Args) *ReaperContext {
 	ctx := &ReaperContext{
+		ExcludedNamespaces:                         make([]string, 0),
 		ReapablePodDisruptionBudgets:               make([]policyv1beta1.PodDisruptionBudget, 0),
 		ClusterBlockingPodDisruptionBudgets:        make(map[string][]policyv1beta1.PodDisruptionBudget),
 		NamespacesWithMultiplePodDisruptionBudgets: make(map[string][]policyv1beta1.PodDisruptionBudget),
@@ -76,6 +79,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	ctx.ReapCrashLoop = args.ReapCrashLoop
 	ctx.ReapMultiple = args.ReapMultiple
 	ctx.AllCrashLoop = args.AllCrashLoop
+	ctx.ExcludedNamespaces = args.ExcludedNamespaces
 
 	if args.CrashLoopRestartCount < 1 {
 		return errors.Errorf("--crashloop-restart-count value cannot be less than 1")
@@ -88,6 +92,10 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	log.Infof("All pods must be in CrashLoopBackOff = %t", ctx.AllCrashLoop)
 	log.Infof("RestartCount Threshold = %v", ctx.CrashLoopRestartCount)
 	log.Infof("Reap Multiple PDBs targeting same deployment = %t", ctx.ReapMultiple)
+
+	if len(ctx.ExcludedNamespaces) > 0 {
+		log.Infof("Excluded namespaces = %+v", ctx.ExcludedNamespaces)
+	}
 
 	if args.K8sConfigPath != "" {
 		if ok := common.PathExists(args.K8sConfigPath); !ok {
