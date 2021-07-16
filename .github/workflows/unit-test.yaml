@@ -22,7 +22,7 @@ jobs:
 
     - name: Test
       run: |
-        make coverage
+        go test -coverprofile ./coverage.txt -v ./...
         make docker-build
 
     - name: Upload to Codecov

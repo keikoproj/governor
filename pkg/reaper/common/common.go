@@ -19,8 +19,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -97,4 +102,22 @@ func OutOfClusterAuth(providedConfigPath string) (*kubernetes.Clientset, error) 
 	}
 
 	return clientset, nil
+}
+
+func GetSelectorString(selector *metav1.LabelSelector) (string, error) {
+	selectorMap, err := metav1.LabelSelectorAsMap(selector)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to convert PDB selector to map %+v", selector)
+	}
+
+	return labels.SelectorFromSet(selectorMap).String(), nil
+}
+
+func StringSliceContains(sl []string, s string) bool {
+	for _, x := range sl {
+		if strings.EqualFold(x, s) {
+			return true
+		}
+	}
+	return false
 }
