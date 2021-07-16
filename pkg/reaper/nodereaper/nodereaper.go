@@ -416,7 +416,7 @@ func (ctx *ReaperContext) deriveGhostDrainReapableNodes(w ReaperAwsAuth) error {
 		for node, instance := range ctx.GhostInstances {
 			log.Infof("node %v is drain-reapable, referencing terminated instance %v !! State = Ghost", node, instance)
 			ctx.addDrainable(node, instance)
-			ctx.addReapable(node, instance, false)
+			ctx.addReapable(node, instance, ctx.AsgValidation)
 		}
 	}
 	return nil
