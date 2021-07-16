@@ -58,7 +58,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.AgeReapThrottle = args.AgeReapThrottle
 	ctx.SoftReap = args.SoftReap
 	ctx.AsgValidation = args.AsgValidation
-	ctx.ReapableInstances = make(map[string]string)
+	ctx.ReapableInstances = make([]ReapableInstance, 0)
 	ctx.DrainableInstances = make(map[string]string)
 	ctx.ClusterInstancesData = make(map[string]float64)
 	ctx.GhostInstances = make(map[string]string)
@@ -331,7 +331,7 @@ func (ctx *ReaperContext) deriveTaintDrainReapableNodes() error {
 		for _, t := range ctx.ReapTainted {
 			if nodeIsTainted(t, node) {
 				ctx.addDrainable(node.Name, nodeInstanceID)
-				ctx.addReapable(node.Name, nodeInstanceID)
+				ctx.addReapable(node.Name, nodeInstanceID, ctx.AsgValidation)
 			}
 		}
 	}
@@ -386,7 +386,7 @@ func (ctx *ReaperContext) deriveFlappyDrainReapableNodes() error {
 			if nodeIsFlappy(events, nodeName, countThreshold, "NodeReady") && !hasSkipLabel(node, reapFlappyDisabledLabelKey) {
 				log.Infof("node %v is drain-reapable !! State = ReadinessFlapping", nodeName)
 				ctx.addDrainable(nodeName, nodeInstanceID)
-				ctx.addReapable(nodeName, nodeInstanceID)
+				ctx.addReapable(nodeName, nodeInstanceID, ctx.AsgValidation)
 			}
 		}
 	}
@@ -416,7 +416,7 @@ func (ctx *ReaperContext) deriveGhostDrainReapableNodes(w ReaperAwsAuth) error {
 		for node, instance := range ctx.GhostInstances {
 			log.Infof("node %v is drain-reapable, referencing terminated instance %v !! State = Ghost", node, instance)
 			ctx.addDrainable(node, instance)
-			ctx.addReapable(node, instance)
+			ctx.addReapable(node, instance, false)
 		}
 	}
 	return nil
@@ -432,7 +432,7 @@ func (ctx *ReaperContext) deriveReapableNodes() error {
 			if minutesElapsed > float64(ctx.ReapUnjoinedThresholdMinutes) {
 				log.Infof("instance '%v' has been running for %f minutes but is not joined to cluster", instanceID, minutesElapsed)
 				unjoinedNodeName := fmt.Sprintf("unjoined-%v", instanceID)
-				ctx.addReapable(unjoinedNodeName, instanceID)
+				ctx.addReapable(unjoinedNodeName, instanceID, false)
 			}
 		}
 	}
@@ -457,7 +457,7 @@ func (ctx *ReaperContext) deriveReapableNodes() error {
 		if ctx.ReapUnready && nodeStateIsNotReady(&node) && !hasSkipLabel(node, reapUnreadyDisabledLabelKey) {
 			if nodeMeetsReapAfterThreshold(ctx.TimeToReap, lastStateDurationIntervalMinutes) {
 				log.Infof("node %v is reapable !! State = NotReady, diff: %.2f/%v", nodeName, lastStateDurationIntervalMinutes, ctx.TimeToReap)
-				ctx.addReapable(nodeName, nodeInstanceID)
+				ctx.addReapable(nodeName, nodeInstanceID, ctx.AsgValidation)
 			} else {
 				log.Infof("node %v is not reapable, time threshold not met", nodeName)
 				continue
@@ -467,7 +467,7 @@ func (ctx *ReaperContext) deriveReapableNodes() error {
 		if ctx.ReapUnknown && nodeStateIsUnknown(&node) && !hasSkipLabel(node, reapUnknownDisabledLabelKey) {
 			if nodeMeetsReapAfterThreshold(ctx.TimeToReap, lastStateDurationIntervalMinutes) {
 				log.Infof("node %v is reapable !! State = Unknown, diff: %.2f/%v", nodeName, lastStateDurationIntervalMinutes, ctx.TimeToReap)
-				ctx.addReapable(nodeName, nodeInstanceID)
+				ctx.addReapable(nodeName, nodeInstanceID, ctx.AsgValidation)
 			} else {
 				log.Infof("node %v is not reapable, time threshold not met", nodeName)
 				continue
@@ -572,46 +572,46 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 }
 
 func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
-	for node, instance := range ctx.ReapableInstances {
+	for _, instance := range ctx.ReapableInstances {
 
 		if ctx.TerminatedInstances >= ctx.MaxKill {
 			log.Infof("max kill nodes reached, %v/%v nodes have been terminated in current run", ctx.TerminatedInstances, ctx.MaxKill)
 			return nil
 		}
 
-		if ctx.AsgValidation {
+		if ctx.AsgValidation && instance.RequiresValidation {
 			// Skip nodes which are on unstable ASG
-			stable, err := autoScalingGroupIsStable(w, instance)
+			stable, err := autoScalingGroupIsStable(w, instance.InstanceID)
 			if err != nil {
 				return err
 			}
 
 			if !stable {
-				log.Infof("autoscaling-group is in transition, will not reap %v", node)
+				log.Infof("autoscaling-group is in transition, will not reap %v", instance.NodeName)
 				continue
 			}
 		}
 
 		// Drain if drainable
-		if _, drainable := ctx.DrainableInstances[node]; drainable {
+		if _, drainable := ctx.DrainableInstances[instance.NodeName]; drainable {
 			if ctx.DryRun {
-				log.Warnf("dry run is on, '%v' will not be cordon/drained", node)
+				log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
 			}
-			err := ctx.drainNode(node, ctx.DryRun)
+			err := ctx.drainNode(instance.NodeName, ctx.DryRun)
 			if err != nil {
 				return err
 			}
 		}
 
-		err := dumpSpec(node, ctx.KubernetesClient)
+		err := dumpSpec(instance.NodeName, ctx.KubernetesClient)
 		if err != nil {
-			log.Warnf("failed to dump spec for node %v, %v", node, err)
+			log.Warnf("failed to dump spec for node %v, %v", instance.NodeName, err)
 		}
 
 		if !ctx.DryRun {
-			log.Infof("reaping unhealthy node %v -> %v", node, instance)
+			log.Infof("reaping unhealthy node %v -> %v", instance.NodeName, instance)
 
-			err = ctx.terminateInstance(w.ASG, instance, node)
+			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
 			if err != nil {
 				return err
 			}
@@ -621,7 +621,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
 			time.Sleep(time.Second * time.Duration(ctx.ReapThrottle))
 		} else {
-			log.Warnf("dry run is on, '%v' will not be terminated", node)
+			log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
 		}
 	}
 	log.Infof("reap cycle completed, terminated %v instances", ctx.TerminatedInstances)
@@ -765,15 +765,17 @@ func autoScalingGroupIsStable(w ReaperAwsAuth, instance string) (bool, error) {
 		return false, err
 	}
 
-	instanceCount := aws.Int64(int64(len(scalingGroup.Instances)))
-	if *instanceCount != *scalingGroup.DesiredCapacity {
-		return false, nil
-	}
+	var availableInstanceCount int64
 	for _, instance := range scalingGroup.Instances {
-		if *instance.HealthStatus == *aws.String("Unhealthy") {
-			return false, nil
+		if scalingInstanceHealthy(instance) && scalingInstanceInService(instance) {
+			availableInstanceCount++
 		}
 	}
+
+	if aws.Int64Value(scalingGroup.DesiredCapacity) != availableInstanceCount {
+		return false, nil
+	}
+
 	return true, nil
 }
 
@@ -854,4 +856,18 @@ func getAnnotationValue(node v1.Node, annotationKey string) string {
 		}
 	}
 	return ""
+}
+
+func scalingInstanceHealthy(instance *autoscaling.Instance) bool {
+	if aws.StringValue(instance.HealthStatus) == "Healthy" {
+		return true
+	}
+	return false
+}
+
+func scalingInstanceInService(instance *autoscaling.Instance) bool {
+	if aws.StringValue(instance.LifecycleState) == autoscaling.LifecycleStateInService {
+		return true
+	}
+	return false
 }
