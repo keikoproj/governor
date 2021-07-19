@@ -130,12 +130,18 @@ func (m *stubASG) DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScali
 	instances := []*autoscaling.Instance{}
 
 	for i := 1; i <= int(m.HealthyInstances); i++ {
-		instance := &autoscaling.Instance{HealthStatus: aws.String("Healthy")}
+		instance := &autoscaling.Instance{
+			HealthStatus:   aws.String("Healthy"),
+			LifecycleState: aws.String(autoscaling.LifecycleStateInService),
+		}
 		instances = append(instances, instance)
 	}
 
 	for i := 1; i <= int(m.UnhealthyInstances); i++ {
-		instance := &autoscaling.Instance{HealthStatus: aws.String("Unhealthy")}
+		instance := &autoscaling.Instance{
+			HealthStatus:   aws.String("Unhealthy"),
+			LifecycleState: aws.String(autoscaling.LifecycleStatePending),
+		}
 		instances = append(instances, instance)
 	}
 
@@ -169,7 +175,7 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.ReapThrottle = 0
 	ctx.AgeReapThrottle = 0
 	ctx.DrainableInstances = make(map[string]string)
-	ctx.ReapableInstances = make(map[string]string)
+	ctx.ReapableInstances = make([]ReapableInstance, 0)
 	ctx.GhostInstances = make(map[string]string)
 	ctx.ClusterInstancesData = make(map[string]float64)
 	ctx.NodeInstanceIDs = make(map[string]string)
@@ -1366,6 +1372,70 @@ func TestUnjoinedPositive(t *testing.T) {
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   2,
 			Unhealthy: 0,
+			Desired:   2,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName:   "node-10-10-10-10",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-101010101010",
+			},
+			{
+				nodeName:   "node-20-20-20-20",
+				state:      "Ready",
+				providerID: "aws:///us-west-2a/i-202020202020",
+			},
+		},
+		FakeInstances: []*ec2.Instance{
+			{
+				InstanceId: aws.String("i-303030303030"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-30) * time.Minute)),
+				Tags: []*ec2.Tag{
+					{
+						Key:   aws.String("KubernetesCluster"),
+						Value: aws.String("my-cluster"),
+					},
+				},
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
+				},
+			},
+			{
+				InstanceId: aws.String("i-404040404040"),
+				LaunchTime: aws.Time(time.Now().Add(time.Duration(-30) * time.Minute)),
+				Tags: []*ec2.Tag{
+					{
+						Key:   aws.String("KubernetesCluster"),
+						Value: aws.String("different-cluster"),
+					},
+				},
+				State: &ec2.InstanceState{
+					Name: aws.String("running"),
+				},
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    0,
+		ExpectedReapable:   1,
+		ExpectedTerminated: 1,
+	}
+	testCase.Run(t, false)
+}
+
+func TestUnjoinedValidation(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.ReapUnjoined = true
+	reaper.ReapUnjoinedThresholdMinutes = 15
+	reaper.AsgValidation = true
+	reaper.ReapUnjoinedKey = "KubernetesCluster"
+	reaper.ReapUnjoinedValue = "my-cluster"
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Unjoined - nodes should be terminated if they are unjoined",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   0,
+			Unhealthy: 2,
 			Desired:   2,
 		},
 		Nodes: []FakeNode{

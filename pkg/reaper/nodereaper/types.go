@@ -16,6 +16,7 @@ limitations under the License.
 package nodereaper
 
 import (
+	"reflect"
 	"sort"
 
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
@@ -106,7 +107,7 @@ type ReaperContext struct {
 	SelfName                  string
 	AgeKillOrder              []string
 	AgeDrainReapableInstances []AgeDrainReapableInstance
-	ReapableInstances         map[string]string
+	ReapableInstances         []ReapableInstance
 	DrainableInstances        map[string]string
 	TerminatedInstances       int
 	DrainedInstances          int
@@ -119,6 +120,12 @@ type AgeDrainReapableInstance struct {
 	AgeMinutes int
 }
 
+type ReapableInstance struct {
+	NodeName           string
+	InstanceID         string
+	RequiresValidation bool
+}
+
 // AgeSorter sorts age-reapable nodes by their AgeMinutes
 type AgeSorter []AgeDrainReapableInstance
 
@@ -126,8 +133,18 @@ func (a AgeSorter) Len() int           { return len(a) }
 func (a AgeSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a AgeSorter) Less(i, j int) bool { return a[i].AgeMinutes > a[j].AgeMinutes }
 
-func (ctx *ReaperContext) addReapable(name string, id string) {
-	ctx.ReapableInstances[name] = id
+func (ctx *ReaperContext) addReapable(name string, id string, validation bool) {
+	instance := ReapableInstance{
+		NodeName:           name,
+		InstanceID:         id,
+		RequiresValidation: validation,
+	}
+	for _, i := range ctx.ReapableInstances {
+		if reflect.DeepEqual(instance, i) {
+			return
+		}
+	}
+	ctx.ReapableInstances = append(ctx.ReapableInstances, instance)
 }
 
 func (ctx *ReaperContext) addDrainable(name string, id string) {
@@ -136,12 +153,17 @@ func (ctx *ReaperContext) addDrainable(name string, id string) {
 
 // Different queue for age-reapable in order to allow for different throttle / validation checks
 func (ctx *ReaperContext) addAgeDrainReapable(name string, id string, age int) {
-	node := AgeDrainReapableInstance{
+	instance := AgeDrainReapableInstance{
 		NodeName:   name,
 		InstanceID: id,
 		AgeMinutes: age,
 	}
-	ctx.AgeDrainReapableInstances = append(ctx.AgeDrainReapableInstances, node)
+	for _, i := range ctx.AgeDrainReapableInstances {
+		if reflect.DeepEqual(instance, i) {
+			return
+		}
+	}
+	ctx.AgeDrainReapableInstances = append(ctx.AgeDrainReapableInstances, instance)
 	// Sort by age after adding a new object
 	sort.Sort(AgeSorter(ctx.AgeDrainReapableInstances))
 }
