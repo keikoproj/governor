@@ -1,0 +1,44 @@
+{{ if .Values.reaper.podreaper }}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-reaper
+subjects:
+- kind: ServiceAccount
+  name: pod-reaper
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: pod-reaper
+  apiGroup: rbac.authorization.k8s.io
+---
+{{ end }}
+{{ if .Values.reaper.pdbreaper }}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pdb-reaper
+subjects:
+- kind: ServiceAccount
+  name: pdb-reaper
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: pdb-reaper
+  apiGroup: rbac.authorization.k8s.io
+---
+{{ end }}
+{{ if .Values.reaper.nodereaper }}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: node-reaper
+subjects:
+- kind: ServiceAccount
+  name: node-reaper
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: node-reaper
+  apiGroup: rbac.authorization.k8s.io
+{{ end }}

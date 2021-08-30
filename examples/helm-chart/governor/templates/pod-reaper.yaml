@@ -1,0 +1,33 @@
+{{ if .Values.reaper.podreaper }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pod-reaper
+  namespace: {{ .Release.Namespace }}
+spec:
+  # Scan every 10 minutes
+  schedule: "{{ .Values.reaper.podreaper.schedule }}"
+  failedJobsHistoryLimit: {{ .Values.reaper.podreaper.failedJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ .Values.reaper.podreaper.successfulJobsHistoryLimit }}
+  # Disallow concurrent executions
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.reaper.podreaper.startingDeadlineSeconds }}
+  jobTemplate:
+    spec:
+      # Terminate long running pods
+      activeDeadlineSeconds: {{ .Values.reaper.podreaper.activeDeadlineSeconds }}
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: pod-reaper
+          restartPolicy: Never
+          containers:
+          - name: pod-reaper
+            image: governor:latest
+            args:
+            - governor
+            - reap
+            - pod
+            - --reap-after={{ .Values.reaper.podreaper.reapafter }}
+            - --soft-reap={{ .Values.reaper.podreaper.softreap }}
+{{ end }}
