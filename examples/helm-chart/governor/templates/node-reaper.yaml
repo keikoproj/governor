@@ -35,7 +35,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            image: governor:latest
+            image: keikoproj/governor:{{- include "image.version" . | trim}}
             args:
             - governor
             - reap

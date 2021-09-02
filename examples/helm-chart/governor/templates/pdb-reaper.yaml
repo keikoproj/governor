@@ -22,7 +22,7 @@ spec:
           restartPolicy: Never
           containers:
           - name: pdb-reaper
-            image: governor:latest
+            image: keikoproj/governor:{{- include "image.version" . | trim}}
             args:
             - governor
             - reap

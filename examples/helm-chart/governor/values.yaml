@@ -2,6 +2,8 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 reaper:
+  # The image version is derived from the app version. However, if you wish to have a different one, it can be overridden here
+  imageVersion:
   podreaper:
     schedule: "*/10 * * * *"
     failedJobsHistoryLimit: 3

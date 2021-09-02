@@ -5,7 +5,7 @@ metadata:
   name: pod-reaper
 rules:
 - apiGroups: [""]
-  resources: ["pods", ]
+  resources: ["pods", namespaces]
   verbs: ["get", "delete", "list"]
 ---
 {{ end }}
