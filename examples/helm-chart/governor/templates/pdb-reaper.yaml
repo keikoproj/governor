@@ -1,0 +1,33 @@
+{{- if .Values.reaper.pdbreaper }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pdb-reaper
+  namespace: {{ .Release.Namespace }}
+spec:
+  # Scan every 10 minutes
+  schedule: "{{ .Values.reaper.pdbreaper.schedule }}"
+  failedJobsHistoryLimit: {{ .Values.reaper.pdbreaper.failedJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ .Values.reaper.pdbreaper.successfulJobsHistoryLimit }}
+  # Disallow concurrent executions
+  concurrencyPolicy: {{ .Values.reaper.pdbreaper.concurrencyPolicy }}
+  startingDeadlineSeconds: {{ .Values.reaper.pdbreaper.startingDeadlineSeconds }}
+  jobTemplate:
+    spec:
+      # Terminate long running pods
+      activeDeadlineSeconds: {{ .Values.reaper.pdbreaper.activeDeadlineSeconds }}
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: pdb-reaper
+          restartPolicy: Never
+          containers:
+          - name: pdb-reaper
+            image: keikoproj/governor:{{- include "image.version" . | trim}}
+            args:
+            - governor
+            - reap
+            - pdb
+            # Reap PDBs blocking when there are pods in crashloop backoff with N > 3 restarts
+            - --reap-crashloop={{ .Values.reaper.pdbreaper.reapcrashloop }}
+{{- end }}
