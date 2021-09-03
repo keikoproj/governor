@@ -5,8 +5,11 @@ metadata:
   name: pod-reaper
 rules:
 - apiGroups: [""]
-  resources: ["pods", namespaces]
+  resources: ["pods"]
   verbs: ["get", "delete", "list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 ---
 {{ end }}
 {{ if .Values.reaper.pdbreaper }}
