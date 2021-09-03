@@ -1,3 +1,4 @@
+{{- if .Values.reaper.pdbreaper }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -29,3 +30,4 @@ spec:
             - pdb
             # Reap PDBs blocking when there are pods in crashloop backoff with N > 3 restarts
             - --reap-crashloop={{ .Values.reaper.pdbreaper.reapcrashloop }}
+{{- end }}

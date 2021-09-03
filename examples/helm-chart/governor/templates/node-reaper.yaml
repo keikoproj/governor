@@ -1,3 +1,4 @@
+{{- if .Values.reaper.nodereaper }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -52,9 +53,10 @@ spec:
             - --reap-unjoined-threshold-minutes={{ .Values.reaper.nodereaper.reapunjoinedthreshold }}
             - --reap-unjoined-tag-key={{ .Values.reaper.nodereaper.reapunjoinedkey }}
             - --reap-unjoined-tag-value={{ .Values.reaper.nodereaper.reapunjoinedtagvalue }}
-{{- if .Values.reaper.nodereaper.reapold }}
+  {{- if .Values.reaper.nodereaper.reapold }}
             - --reap-old
             - --reap-old-threshold-minutes={{ .Values.reaper.nodereaper.reapoldthreshold }}
             - --reap-old-throttle={{ .Values.reaper.nodereaper.reapoldthrottle }}
-{{- end }}
+  {{- end }}
             - --max-kill-nodes={{ .Values.reaper.nodereaper.maxkillnodes }}
+{{- end }}
