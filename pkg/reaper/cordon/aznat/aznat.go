@@ -62,7 +62,6 @@ func Run(args *Args) error {
 }
 
 func (c *CordonContext) execute(targetZones []string, restore, dryRun bool) error {
-	// get cordoned routes
 	var (
 		routes     []Route
 		zoneMap    = c.zoneGateways()
@@ -110,7 +109,6 @@ func (c *CordonContext) execute(targetZones []string, restore, dryRun bool) erro
 }
 
 func (c *CordonContext) discover(vpc string) error {
-
 	filters := []*ec2.Filter{
 		{
 			Name:   aws.String("vpc-id"),
@@ -184,9 +182,7 @@ func (c *CordonContext) replaceGatewayRoute(route Route) error {
 }
 
 func (c *CordonContext) uncordonedRoutes(targetZones []string) []Route {
-	// find routes to different zones
 	routes := make([]Route, 0)
-
 	for _, r := range c.RouteTables {
 		tableId := aws.StringValue(r.RouteTableId)
 		zones := c.routeTableZones(r)
