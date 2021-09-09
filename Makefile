@@ -34,5 +34,6 @@ vtest:
 	go test -v ./... -coverprofile ./coverage.txt --logging-enabled
 
 coverage:
+	mkdir -p ./_output
 	go test -coverprofile ./coverage.txt -v ./...
 	go tool cover -html=./coverage.txt -o _output/cover.html

@@ -62,26 +62,25 @@ func Run(args *Args) error {
 }
 
 func (c *CordonContext) execute(targetZones []string, restore, dryRun bool) error {
-	// get active / cordoned gateways
-	gwStatuses := c.gatewayStatuses(targetZones)
-	if len(gwStatuses.Active) == 0 {
-		log.Errorf("could not find active nat-gateways excluding %v, cannot uncordon all zones", targetZones)
-		return errors.Errorf("no active nat-gateways found")
-	}
-
 	// get cordoned routes
 	var (
-		routes         []Route
-		replaceGateway string
-		zoneMap        = c.zoneGateways()
+		routes     []Route
+		zoneMap    = c.zoneGateways()
+		gwStatuses GatewayStatuses
 	)
+
 	if restore {
 		log.Infof("running route restore operation on zones: %+v, dry-run: %t", targetZones, dryRun)
-		routes = c.uncordonedRoutes()
+		routes = c.uncordonedRoutes(targetZones)
 	} else {
+		gwStatuses = c.gatewayStatuses(targetZones)
+		if len(gwStatuses.Active) == 0 {
+			log.Errorf("could not find active nat-gateways excluding %v, cannot uncordon all zones", targetZones)
+			return errors.Errorf("no active nat-gateways found")
+		}
+
 		log.Infof("running route cordon operation on zones: %+v, dry-run: %t", targetZones, dryRun)
 		routes = c.cordonedRoutes(gwStatuses)
-		replaceGateway = gwStatuses.Active[0]
 	}
 
 	if len(routes) == 0 {
@@ -92,19 +91,21 @@ func (c *CordonContext) execute(targetZones []string, restore, dryRun bool) erro
 	for _, r := range routes {
 		if restore {
 			if gws, ok := zoneMap[r.ZoneID]; ok {
-				replaceGateway = gws[0]
+				r.NewGateway = gws[0]
 			}
+		} else {
+			r.NewGateway = gwStatuses.Active[0]
 		}
 		if dryRun {
-			log.Warnf("--dry-run flag is set, will skip replacement of route table %+v with new gateway %v\n", r.TableID, replaceGateway)
+			log.Warnf("--dry-run flag is set, will skip replacement of route table %+v with new gateway %v\n", r.TableID, r.NewGateway)
 			continue
 		}
-		err := c.replaceGatewayRoute(r, replaceGateway)
+		err := c.replaceGatewayRoute(r)
 		if err != nil {
 			return err
 		}
 	}
-
+	log.Infof("execution completed, replaced %v routes", c.ReplacedRoutes)
 	return nil
 }
 
@@ -168,30 +169,34 @@ func (c *CordonContext) discover(vpc string) error {
 	return nil
 }
 
-func (c *CordonContext) replaceGatewayRoute(route Route, newGateway string) error {
-	log.Info("replacing route-table entry in table %v: %v->%v to %v->%v", route.TableID, route.DestinationCIDR, route.GatewayID, route.DestinationCIDR, newGateway)
+func (c *CordonContext) replaceGatewayRoute(route Route) error {
+	log.Infof("replacing route-table entry in table %v: %v->%v to %v->%v", route.TableID, route.DestinationCIDR, route.GatewayID, route.DestinationCIDR, route.NewGateway)
 	_, err := c.EC2.ReplaceRoute(&ec2.ReplaceRouteInput{
 		RouteTableId:         aws.String(route.TableID),
 		DestinationCidrBlock: aws.String(route.DestinationCIDR),
-		NatGatewayId:         aws.String(newGateway),
+		NatGatewayId:         aws.String(route.NewGateway),
 	})
 	if err != nil {
 		return err
 	}
+	c.ReplacedRoutes = append(c.ReplacedRoutes, route)
 	return nil
 }
 
-func (c *CordonContext) uncordonedRoutes() []Route {
+func (c *CordonContext) uncordonedRoutes(targetZones []string) []Route {
 	// find routes to different zones
 	routes := make([]Route, 0)
 
 	for _, r := range c.RouteTables {
+		tableId := aws.StringValue(r.RouteTableId)
 		zones := c.routeTableZones(r)
 		if len(zones) != 1 {
-			// TODO: add log msg
+			log.Infof("skipping route table '%v' since it is associated with multiple zones", tableId)
 			continue
 		}
-		tableId := aws.StringValue(r.RouteTableId)
+		if !common.StringSliceContains(targetZones, zones[0]) {
+			continue
+		}
 		rts := getNatRoutes(r)
 		for _, rt := range rts {
 			destination := aws.StringValue(rt.DestinationCidrBlock)

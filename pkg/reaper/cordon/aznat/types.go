@@ -32,6 +32,7 @@ type CordonContext struct {
 	RouteTables        []*ec2.RouteTable
 	Gateways           []*ec2.NatGateway
 	SubnetAssociations []SubnetAssociation
+	ReplacedRoutes     []Route
 }
 
 type SubnetAssociation struct {
@@ -50,6 +51,7 @@ type Route struct {
 	DestinationCIDR string
 	GatewayID       string
 	ZoneID          string
+	NewGateway      string
 }
 
 type Args struct {
