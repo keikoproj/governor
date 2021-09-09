@@ -15,8 +15,11 @@ metadata:
   name: pod-reaper
 rules:
 - apiGroups: [""]
-  resources: ["pods", ]
+  resources: ["pods"]
   verbs: ["get", "delete", "list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
