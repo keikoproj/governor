@@ -105,7 +105,7 @@ func (c *CordonContext) execute(targetZones []string, restore, dryRun bool) erro
 			return err
 		}
 	}
-	log.Infof("execution completed, replaced %v routes", c.ReplacedRoutes)
+	log.Infof("execution completed, replaced %v routes", len(c.ReplacedRoutes))
 	return nil
 }
 
@@ -190,8 +190,10 @@ func (c *CordonContext) uncordonedRoutes(targetZones []string) []Route {
 	for _, r := range c.RouteTables {
 		tableId := aws.StringValue(r.RouteTableId)
 		zones := c.routeTableZones(r)
-		if len(zones) != 1 {
+		if len(zones) > 1 {
 			log.Infof("skipping route table '%v' since it is associated with multiple zones", tableId)
+			continue
+		} else if len(zones) == 0 {
 			continue
 		}
 		if !common.StringSliceContains(targetZones, zones[0]) {

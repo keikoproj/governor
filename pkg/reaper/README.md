@@ -364,3 +364,49 @@ Flags:
       --reap-misconfigured            Delete PDBs which are configured to not allow disruptions (default true)
       --reap-multiple                 Delete multiple PDBs which are targeting a single deployment (default true)
 ```
+
+## Cordon AZ-NAT
+
+### What does the AZ-NAT cordon tool do?
+
+The AZ-NAT Cordon tool allows to cordon / uncordon a specific route to a NAT Gateway, for example, if there are networking issues in usw2-az1, you can use the tool to modify existing route tables to use a different NAT gateway in a healthy zone. When networking issues are resolved, you can use the tool to restore the route tables to the original state.
+
+You can either run this as a job within the cluster, or as a script from command-line, as long as AWS credentials are provided.
+
+### Usage
+
+```text
+Usage:
+  governor cordon az-nat [flags]
+
+Flags:
+      --dry-run                 print change but don't replace route
+  -h, --help                    help for az-nat
+      --region string           AWS region to use
+      --restore                 restores route tables to route to NAT in associated AZs
+      --target-az-ids strings   comma separated list of AWS AZ IDs e.g. usw2-az1,usw2-az2
+      --target-vpc-id string    vpc to target
+
+Global Flags:
+      --config string   config file (default is $HOME/.governor.yaml)
+```
+
+### Examples
+
+```bash
+# cordon AZ paths for az1 and az2 in us-west-2 (remove --dry-run flag to apply the change)
+$ ./governor cordon az-nat --target-vpc-id vpc-09add63c8REDACTED --region us-west-2 --target-az-ids usw2-az1,usw2-az2
+
+INFO[2021-09-09T12:50:39-07:00] running route cordon operation on zones: [usw2-az1 usw2-az2], dry-run: false
+INFO[2021-09-09T12:50:39-07:00] replacing route-table entry in table rtb-00ab9dbf5REDACTED: 0.0.0.0/0->nat-0b3fde832REDACTED to 0.0.0.0/0->nat-0ef57ef93REDACTED
+INFO[2021-09-09T12:50:40-07:00] replacing route-table entry in table rtb-0e90ce385REDACTED: 0.0.0.0/0->nat-0cc62c7ceREDACTED to 0.0.0.0/0->nat-0ef57ef93REDACTED
+INFO[2021-09-09T12:50:40-07:00] execution completed, replaced 2 routes
+
+$ ./governor cordon az-nat --target-vpc-id vpc-09add63c8REDACTED --region us-west-2 --target-az-ids usw2-az1,usw2-az2 --restore
+
+INFO[2021-09-09T12:51:37-07:00] running route restore operation on zones: [usw2-az1 usw2-az2], dry-run: false
+INFO[2021-09-09T12:51:37-07:00] replacing route-table entry in table rtb-00ab9dbf5REDACTED: 0.0.0.0/0->nat-0ef57ef93REDACTED to 0.0.0.0/0->nat-0b3fde832REDACTED
+INFO[2021-09-09T12:51:37-07:00] replacing route-table entry in table rtb-0e90ce385REDACTED: 0.0.0.0/0->nat-0ef57ef93REDACTED to 0.0.0.0/0->nat-0cc62c7ceREDACTED
+INFO[2021-09-09T12:51:38-07:00] execution completed, replaced 2 routes
+```
+

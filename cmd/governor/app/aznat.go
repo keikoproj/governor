@@ -41,9 +41,9 @@ var azNatCmd = &cobra.Command{
 func init() {
 	cordonCmd.AddCommand(azNatCmd)
 	azNatCmd.Flags().StringSliceVar(&azNatArgs.TargetAvailabilityZoneIDs, "target-az-ids", []string{}, "comma separated list of AWS AZ IDs e.g. usw2-az1,usw2-az2")
-	azNatCmd.Flags().StringVar(&azNatArgs.TargetVPCID, "target-vpc-id", "", "VPC to target")
-	azNatCmd.Flags().StringVar(&azNatArgs.Region, "region", "", "AWS Region to use")
-	azNatCmd.Flags().BoolVar(&azNatArgs.Restore, "restore", false, "Restores route tables to route to NAT in their AZ")
-	azNatCmd.Flags().BoolVar(&azNatArgs.DryRun, "dry-run", false, "Print change but don't replace route")
+	azNatCmd.Flags().StringVar(&azNatArgs.TargetVPCID, "target-vpc-id", "", "vpc to target")
+	azNatCmd.Flags().StringVar(&azNatArgs.Region, "region", "", "AWS region to use")
+	azNatCmd.Flags().BoolVar(&azNatArgs.Restore, "restore", false, "restores route tables to route to NAT in associated AZs")
+	azNatCmd.Flags().BoolVar(&azNatArgs.DryRun, "dry-run", false, "print change but don't replace route")
 
 }
