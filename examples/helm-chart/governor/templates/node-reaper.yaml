@@ -1,0 +1,62 @@
+{{- if .Values.reaper.nodereaper }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: node-reaper
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: "{{ .Values.reaper.nodereaper.schedule }}"
+  failedJobsHistoryLimit: {{ .Values.reaper.nodereaper.failedJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ .Values.reaper.nodereaper.successfulJobsHistoryLimit }}
+  # Disallow concurrent executions
+  concurrencyPolicy: {{ .Values.reaper.nodereaper.concurrencyPolicy }}
+  startingDeadlineSeconds: {{ .Values.reaper.nodereaper.startingDeadlineSeconds }}
+  jobTemplate:
+    spec:
+      # Terminate long running pods
+      activeDeadlineSeconds: {{ .Values.reaper.nodereaper.activeDeadlineSeconds }}
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: node-reaper
+          restartPolicy: Never
+          containers:
+          - name: node-reaper
+            env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Expose self nodeName as NODE_NAME environment variable - required for reapOld
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            image: keikoproj/governor:{{- include "image.version" . | trim}}
+            args:
+            - governor
+            - reap
+            - node
+            - --dry-run={{ .Values.reaper.nodereaper.dryrun }}
+            - --region={{ .Values.reaper.nodereaper.region }}
+            - --reap-after={{ .Values.reaper.nodereaper.reapafter }}
+            - --soft-reap={{ .Values.reaper.nodereaper.softreap }}
+            - --reap-unknown={{ .Values.reaper.nodereaper.reapunknown }}
+            - --reap-unready={{ .Values.reaper.nodereaper.reapunready }}
+            - --reap-throttle={{ .Values.reaper.nodereaper.reapthreshold }}
+            - --reap-ghost={{ .Values.reaper.nodereaper.reapghost }}
+            - --reap-unjoined={{ .Values.reaper.nodereaper.reapunjoined }}
+            - --reap-unjoined-threshold-minutes={{ .Values.reaper.nodereaper.reapunjoinedthreshold }}
+            - --reap-unjoined-tag-key={{ .Values.reaper.nodereaper.reapunjoinedkey }}
+            - --reap-unjoined-tag-value={{ .Values.reaper.nodereaper.reapunjoinedtagvalue }}
+  {{- if .Values.reaper.nodereaper.reapold }}
+            - --reap-old
+            - --reap-old-threshold-minutes={{ .Values.reaper.nodereaper.reapoldthreshold }}
+            - --reap-old-throttle={{ .Values.reaper.nodereaper.reapoldthrottle }}
+  {{- end }}
+            - --max-kill-nodes={{ .Values.reaper.nodereaper.maxkillnodes }}
+{{- end }}

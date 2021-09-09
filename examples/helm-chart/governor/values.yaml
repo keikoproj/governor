@@ -1,0 +1,64 @@
+# Default values for governor.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+reaper:
+  # The image version is derived from the app version. However, if you wish to have a different one, it can be overridden here
+  imageVersion:
+  podreaper:
+    schedule: "*/10 * * * *"
+    failedJobsHistoryLimit: 3
+    successfulJobsHistoryLimit: 3
+    startingDeadlineSeconds: 900
+    activeDeadlineSeconds: 1800
+    #Duration (in minutes) in Termination after which a pod is considered reapable
+    reapafter: 10
+    #Only reap pods without containers running
+    softreap: true
+  pdbreaper:
+    schedule: "*/10 * * * *"
+    failedJobsHistoryLimit: 3
+    successfulJobsHistoryLimit: 3
+    concurrencyPolicy: Forbid
+    startingDeadlineSeconds: 900
+    # terminate long running pods
+    activeDeadlineSeconds: 1800
+    # Reap PDBs blocking when there are pods in crashloop backoff with N > 3 restarts
+    reapcrashloop: true
+  nodereaper:
+    schedule: "*/10 * * * *"
+    failedJobsHistoryLimit: 3
+    successfulJobsHistoryLimit: 3
+    concurrencyPolicy: Forbid
+    startingDeadlineSeconds: 900
+    activeDeadlineSeconds: 1800
+    dryrun: true
+    # Only operate in us-west-2
+    region: west-2
+    # Consider nodes reapable after 10 mintues in a bad state
+    reapafter: 10
+    # Only reap nodes without active pods
+    softreap: true
+    # Unknown nodes are reapable
+    reapunknown: true
+    # NotReady nodes are reapable
+    reapunready: true
+    # Wait 180 seconds after each unhealthy node termination
+    reapthreshold: 180
+    # Nodes with an invalid/incorrect instance-id are reapable
+    reapghost: true
+    # Nodes which fail to join the cluster are reapable
+    reapunjoined: true
+    # Nodes should join the cluster within 15 mintues
+    reapunjoinedthreshold: 15
+    # Tag key and value used to identify an unjoined node, this is an EC2 tag that should
+    # exist on the instances as they are launched (part of ASG), be careful not to get this
+    # wrong as it can cause termination of other instances if they are not detected as nodes
+    # in the cluster
+    reapunjoinedkey: KubernetesCluster
+    reapunjoinedtagvalue: my-cluster-name
+    # Old nodes are reapable
+    reapold: true
+    reapoldthreshold: 43200
+    reapoldthrottle: 3600
+    # Kill a maximum of 1 nodes per run considering throttle wait times
+    maxkillnodes: 1
