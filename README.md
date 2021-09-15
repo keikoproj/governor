@@ -22,6 +22,8 @@ When pdb-reaper deletes PDBs, it does **NOT** recreate them, this is useful when
 
 There are many corner-cases where deleting PDBs might be dangerous, please consider such cases when using pdb-reaper.
 
+**cordon** provides capabilities around cordoning specific data paths in AWS, for example excluding a specific NAT Gatway in case of AZ failure.
+
 ## Usage
 
 Assuming an AWS-hosted running kubernetes cluster:
@@ -44,6 +46,7 @@ kubectl apply -n governor -f https://raw.githubusercontent.com/keikoproj/governo
 | node-reaper | terminates nodes in scaling groups | [node-reaper](pkg/reaper/README.md#node-reaper) |
 | pod-reaper | force terminates stuck pods | [pod-reaper](pkg/reaper/README.md#pod-reaper) |
 | pdb-reaper | deletes blocking PDBs | [pdb-reaper](pkg/reaper/README.md#pdb-reaper) |
+| cordon | helps with cordoning AWS data paths | [cordon](pkg/cordon/README.md#cordon)
 
 ## Release History
 
