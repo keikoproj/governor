@@ -116,6 +116,23 @@ func (ctx *ReaperContext) scan() error {
 			continue
 		}
 		namespacedPDBs[namespace] = append(namespacedPDBs[namespace], pdb)
+	}
+
+	for namespace, pdbs := range namespacedPDBs {
+		if len(pdbs) > 1 {
+			ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace] = append(ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace], pdbs...)
+		}
+	}
+
+	for _, pdb := range pdbs.Items {
+		var (
+			namespace = pdb.GetNamespace()
+		)
+
+		if common.StringSliceContains(ctx.ExcludedNamespaces, namespace) {
+			log.Warnf("ignoring namespace %v since it's excluded", namespace)
+			continue
+		}
 
 		// if pdb is allowing disruptions, it is non-blocking
 		if pdb.Status.PodDisruptionsAllowed != 0 {
@@ -129,12 +146,6 @@ func (ctx *ReaperContext) scan() error {
 		}
 
 		ctx.ClusterBlockingPodDisruptionBudgets[namespace] = append(ctx.ClusterBlockingPodDisruptionBudgets[namespace], pdb)
-	}
-
-	for namespace, pdbs := range namespacedPDBs {
-		if len(pdbs) > 1 {
-			ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace] = append(ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace], pdbs...)
-		}
 	}
 
 	return nil
