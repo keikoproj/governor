@@ -427,22 +427,16 @@ func isPodsInNotReadyState(pods []corev1.Pod, thresholdSeconds int, allPods bool
 	podCount := len(pods)
 	var notReadyCount int
 
-	// need to check if all containers in a pod are ready - within a certain threshold
-	// also check if all pods in a deployment/replicaset are ready - within a certain threshold
 	for _, pod := range pods {
 
-		if pod.Status.Phase == corev1.PodPending && isPodReadinessThresholdPast(pod.Status.StartTime, thresholdSeconds) {
-			notReadyCount++
-		}
-
-		if pod.Status.Phase == corev1.PodRunning && isPodReadinessThresholdPast(pod.Status.StartTime, thresholdSeconds) {
-			for _, condition := range pod.Status.Conditions {
-				if condition.Type == "ContainersReady" && condition.Status == "False" {
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == "ContainersReady" && condition.Status == "False" {
+				if isPodReadinessThresholdPast(condition.LastTransitionTime, thresholdSeconds) {
 					notReadyCount++
+					break
 				}
 			}
 		}
-
 	}
 	if !allPods {
 		if notReadyCount > 0 {
@@ -456,7 +450,7 @@ func isPodsInNotReadyState(pods []corev1.Pod, thresholdSeconds int, allPods bool
 	return false
 }
 
-func isPodReadinessThresholdPast(startTime *metav1.Time, thresholdSeconds int) bool {
+func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bool {
 	currentTimestamp := metav1.Time{Time: time.Now()}
 	return currentTimestamp.Time.Sub(startTime.Time) >= time.Duration(thresholdSeconds)*time.Second
 }

@@ -98,9 +98,14 @@ func _fakeAPI(u *ReaperUnitTest) {
 		}
 		if p.IsNotReady {
 			pod.Status.Phase = corev1.PodPending
+			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
+				Type:               corev1.ContainersReady,
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: metav1.Time{Time: time.Now().Add(time.Duration(-50) * time.Second)},
+			})
 		}
 
-		pod.Status.StartTime = &metav1.Time{Time: time.Now().Add(time.Duration(-50) * time.Second)}
+		pod.Status.StartTime = &metav1.Time{Time: time.Now().Add(time.Duration(-100) * time.Second)}
 		_, err := u.FakeReaper.KubernetesClient.CoreV1().Pods(p.Namespace).Create(pod)
 		if err != nil {
 			panic(err)
