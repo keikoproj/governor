@@ -36,15 +36,17 @@ var log = logrus.New()
 const (
 	ReasonCrashLoopBackOff = "CrashLoopBackOff"
 
-	EventReasonPodDisruptionBudgetDeleted = "PodDisruptionBudgetDeleted"
-	EventReasonBlockingDetected           = "BlockingPodDisruptionBudget"
-	EventReasonMultipleDetected           = "MultiplePodDisruptionBudgets"
-	EventReasonBlockingCrashLoopDetected  = "BlockingPodDisruptionBudgetWithCrashLoop"
+	EventReasonPodDisruptionBudgetDeleted    = "PodDisruptionBudgetDeleted"
+	EventReasonBlockingDetected              = "BlockingPodDisruptionBudget"
+	EventReasonMultipleDetected              = "MultiplePodDisruptionBudgets"
+	EventReasonBlockingCrashLoopDetected     = "BlockingPodDisruptionBudgetWithCrashLoop"
+	EventReasonBlockingNotReadyStateDetected = "BlockingPodDisruptionBudgetWithNotReadyState"
 
 	EventMessageDeletedFmt   = "The PodDisruptionBudget %v has been deleted by pdb-reaper due to violation"
 	EventMessageBlockingFmt  = "The PodDisruptionBudget %v has been marked for deletion due to misconfiguration/not allowing disruptions"
 	EventMessageMultipleFmt  = "The PodDisruptionBudget %v has been marked for deletion due to multiple budgets targeting same pods"
 	EventMessageCrashLoopFmt = "The PodDisruptionBudget %v has been marked for deletion due to pods in CrashLoopBackOff blocking disruptions"
+	EventMessageNotReadyFmt  = "The PodDisruptionBudget %v has been marked for deletion due to pods in not-ready blocking disruptions"
 )
 
 // Run is the main runner function for pdb-reaper, and will initialize and start the pdb-reaper
@@ -114,23 +116,6 @@ func (ctx *ReaperContext) scan() error {
 			continue
 		}
 		namespacedPDBs[namespace] = append(namespacedPDBs[namespace], pdb)
-	}
-
-	for namespace, pdbs := range namespacedPDBs {
-		if len(pdbs) > 1 {
-			ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace] = append(ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace], pdbs...)
-		}
-	}
-
-	for _, pdb := range pdbs.Items {
-		var (
-			namespace = pdb.GetNamespace()
-		)
-
-		if common.StringSliceContains(ctx.ExcludedNamespaces, namespace) {
-			log.Warnf("ignoring namespace %v since it's excluded", namespace)
-			continue
-		}
 
 		// if pdb is allowing disruptions, it is non-blocking
 		if pdb.Status.PodDisruptionsAllowed != 0 {
@@ -144,6 +129,12 @@ func (ctx *ReaperContext) scan() error {
 		}
 
 		ctx.ClusterBlockingPodDisruptionBudgets[namespace] = append(ctx.ClusterBlockingPodDisruptionBudgets[namespace], pdb)
+	}
+
+	for namespace, pdbs := range namespacedPDBs {
+		if len(pdbs) > 1 {
+			ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace] = append(ctx.NamespacesWithMultiplePodDisruptionBudgets[namespace], pdbs...)
+		}
 	}
 
 	return nil
@@ -222,6 +213,17 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					log.Infof("PDB %v is marked reapable due to targeted pods in crashloop: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
 					ctx.addReapablePodDisruptionBudget(pdb)
 					err = ctx.publishEvent(pdb, EventReasonBlockingCrashLoopDetected, EventMessageCrashLoopFmt)
+					if err != nil {
+						log.Warnf(err.Error())
+					}
+				}
+			}
+
+			if ctx.ReapNotReady {
+				if notReady := isPodsInNotReadyState(pods, ctx.ReapNotReadyThreshold, ctx.AllNotReady); notReady {
+					log.Infof("PDB %v is marked reapable due to targeted pods in not-ready state: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
+					ctx.addReapablePodDisruptionBudget(pdb)
+					err = ctx.publishEvent(pdb, EventReasonBlockingNotReadyStateDetected, EventMessageNotReadyFmt)
 					if err != nil {
 						log.Warnf(err.Error())
 					}
@@ -408,4 +410,42 @@ func isPodsInCrashloop(pods []corev1.Pod, threshold int, allPods bool) bool {
 		}
 	}
 	return false
+}
+
+func isPodsInNotReadyState(pods []corev1.Pod, thresholdSeconds int, allPods bool) bool {
+	podCount := len(pods)
+	var notReadyCount int
+
+	// need to check if all containers in a pod are ready - within a certain threshold
+	// also check if all pods in a deployment/replicaset are ready - within a certain threshold
+	for _, pod := range pods {
+
+		if pod.Status.Phase == corev1.PodPending && isPodReadinessThresholdPast(pod.Status.StartTime, thresholdSeconds) {
+			notReadyCount++
+		}
+
+		if pod.Status.Phase == corev1.PodRunning && isPodReadinessThresholdPast(pod.Status.StartTime, thresholdSeconds) {
+			for _, condition := range pod.Status.Conditions {
+				if condition.Type == "ContainersReady" && condition.Status == "False" {
+					notReadyCount++
+				}
+			}
+		}
+
+	}
+	if !allPods {
+		if notReadyCount > 0 {
+			return true
+		}
+	} else {
+		if notReadyCount == podCount {
+			return true
+		}
+	}
+	return false
+}
+
+func isPodReadinessThresholdPast(startTime *metav1.Time, thresholdSeconds int) bool {
+	currentTimestamp := metav1.Time{Time: time.Now()}
+	return currentTimestamp.Time.Sub(startTime.Time) >= time.Duration(thresholdSeconds)*time.Second
 }
