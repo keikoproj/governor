@@ -49,4 +49,7 @@ func init() {
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.AllCrashLoop, "all-crashloop", true, "Only deletes PDBs for crashlooping pods when all pods are in crashloop")
 	pdbReaperCmd.Flags().IntVar(&pdbReaperArgs.CrashLoopRestartCount, "crashloop-restart-count", 5, "Minimum restart count to when considering pods in crashloop")
 	pdbReaperCmd.Flags().StringSliceVar(&pdbReaperArgs.ExcludedNamespaces, "excluded-namespaces", []string{}, "Namespaces excluded from scanning")
+	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.ReapNotReady, "reap-not-ready", true, "Deletes PDBs which have pods in not-ready state")
+	pdbReaperCmd.Flags().IntVar(&pdbReaperArgs.ReapNotReadyThreshold, "not-ready-threshold-seconds", 1800, "Minimum seconds to wait when considering pods in not-ready state")
+	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.AllNotReady, "all-not-ready", false, "Only deletes PDBs for not-ready pods when all pods are in not-ready state")
 }

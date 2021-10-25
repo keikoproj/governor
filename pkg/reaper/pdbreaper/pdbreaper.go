@@ -36,15 +36,17 @@ var log = logrus.New()
 const (
 	ReasonCrashLoopBackOff = "CrashLoopBackOff"
 
-	EventReasonPodDisruptionBudgetDeleted = "PodDisruptionBudgetDeleted"
-	EventReasonBlockingDetected           = "BlockingPodDisruptionBudget"
-	EventReasonMultipleDetected           = "MultiplePodDisruptionBudgets"
-	EventReasonBlockingCrashLoopDetected  = "BlockingPodDisruptionBudgetWithCrashLoop"
+	EventReasonPodDisruptionBudgetDeleted    = "PodDisruptionBudgetDeleted"
+	EventReasonBlockingDetected              = "BlockingPodDisruptionBudget"
+	EventReasonMultipleDetected              = "MultiplePodDisruptionBudgets"
+	EventReasonBlockingCrashLoopDetected     = "BlockingPodDisruptionBudgetWithCrashLoop"
+	EventReasonBlockingNotReadyStateDetected = "BlockingPodDisruptionBudgetWithNotReadyState"
 
 	EventMessageDeletedFmt   = "The PodDisruptionBudget %v has been deleted by pdb-reaper due to violation"
 	EventMessageBlockingFmt  = "The PodDisruptionBudget %v has been marked for deletion due to misconfiguration/not allowing disruptions"
 	EventMessageMultipleFmt  = "The PodDisruptionBudget %v has been marked for deletion due to multiple budgets targeting same pods"
 	EventMessageCrashLoopFmt = "The PodDisruptionBudget %v has been marked for deletion due to pods in CrashLoopBackOff blocking disruptions"
+	EventMessageNotReadyFmt  = "The PodDisruptionBudget %v has been marked for deletion due to pods in not-ready blocking disruptions"
 )
 
 // Run is the main runner function for pdb-reaper, and will initialize and start the pdb-reaper
@@ -222,6 +224,17 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					log.Infof("PDB %v is marked reapable due to targeted pods in crashloop: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
 					ctx.addReapablePodDisruptionBudget(pdb)
 					err = ctx.publishEvent(pdb, EventReasonBlockingCrashLoopDetected, EventMessageCrashLoopFmt)
+					if err != nil {
+						log.Warnf(err.Error())
+					}
+				}
+			}
+
+			if ctx.ReapNotReady {
+				if notReady := isPodsInNotReadyState(pods, ctx.ReapNotReadyThreshold, ctx.AllNotReady); notReady {
+					log.Infof("PDB %v is marked reapable due to targeted pods in not-ready state: %+v", pdbNamespacedName(pdb), podSliceNamespacedNames(pods))
+					ctx.addReapablePodDisruptionBudget(pdb)
+					err = ctx.publishEvent(pdb, EventReasonBlockingNotReadyStateDetected, EventMessageNotReadyFmt)
 					if err != nil {
 						log.Warnf(err.Error())
 					}
@@ -408,4 +421,36 @@ func isPodsInCrashloop(pods []corev1.Pod, threshold int, allPods bool) bool {
 		}
 	}
 	return false
+}
+
+func isPodsInNotReadyState(pods []corev1.Pod, thresholdSeconds int, allPods bool) bool {
+	podCount := len(pods)
+	var notReadyCount int
+
+	for _, pod := range pods {
+
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == "ContainersReady" && condition.Status == "False" {
+				if isPodReadinessThresholdPast(condition.LastTransitionTime, thresholdSeconds) {
+					notReadyCount++
+					break
+				}
+			}
+		}
+	}
+	if !allPods {
+		if notReadyCount > 0 {
+			return true
+		}
+	} else {
+		if notReadyCount == podCount {
+			return true
+		}
+	}
+	return false
+}
+
+func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bool {
+	currentTimestamp := metav1.Time{Time: time.Now()}
+	return currentTimestamp.Time.Sub(startTime.Time) >= time.Duration(thresholdSeconds)*time.Second
 }
