@@ -36,6 +36,9 @@ type Args struct {
 	AllCrashLoop          bool
 	ExcludedNamespaces    []string
 	CrashLoopRestartCount int
+	ReapNotReady          bool
+	ReapNotReadyThreshold int
+	AllNotReady           bool
 }
 
 // ReaperContext holds the context of the pdb-reaper and target cluster
@@ -49,6 +52,9 @@ type ReaperContext struct {
 	ReapCrashLoop                              bool
 	AllCrashLoop                               bool
 	CrashLoopRestartCount                      int
+	ReapNotReady                               bool
+	ReapNotReadyThreshold                      int
+	AllNotReady                                bool
 	ReapablePodDisruptionBudgets               []policyv1beta1.PodDisruptionBudget
 	ClusterBlockingPodDisruptionBudgets        map[string][]policyv1beta1.PodDisruptionBudget
 	NamespacesWithMultiplePodDisruptionBudgets map[string][]policyv1beta1.PodDisruptionBudget
@@ -80,11 +86,18 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	ctx.ReapMultiple = args.ReapMultiple
 	ctx.AllCrashLoop = args.AllCrashLoop
 	ctx.ExcludedNamespaces = args.ExcludedNamespaces
+	ctx.ReapNotReady = args.ReapNotReady
+	ctx.AllNotReady = args.AllNotReady
 
 	if args.CrashLoopRestartCount < 1 {
 		return errors.Errorf("--crashloop-restart-count value cannot be less than 1")
 	}
 	ctx.CrashLoopRestartCount = args.CrashLoopRestartCount
+
+	if args.CrashLoopRestartCount < 1 {
+		return errors.Errorf("--not-ready-threshold-seconds value cannot be less than 1")
+	}
+	ctx.ReapNotReadyThreshold = args.ReapNotReadyThreshold
 
 	log.Infof("Dry Run = %t", ctx.DryRun)
 	log.Infof("Reap Misconfigured PDBs = %t", ctx.ReapMisconfigured)
@@ -92,6 +105,9 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	log.Infof("All pods must be in CrashLoopBackOff = %t", ctx.AllCrashLoop)
 	log.Infof("RestartCount Threshold = %v", ctx.CrashLoopRestartCount)
 	log.Infof("Reap Multiple PDBs targeting same deployment = %t", ctx.ReapMultiple)
+	log.Infof("Reap PDBs with pods in not-ready state = %t", ctx.ReapNotReady)
+	log.Infof("Minimum seconds to wait when considering pods in not-ready state = %v", ctx.ReapNotReadyThreshold)
+	log.Infof("All pods must be in not-ready state = %t", ctx.AllNotReady)
 
 	if len(ctx.ExcludedNamespaces) > 0 {
 		log.Infof("Excluded namespaces = %+v", ctx.ExcludedNamespaces)
