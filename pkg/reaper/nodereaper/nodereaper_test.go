@@ -1623,6 +1623,30 @@ func TestProviderIDParser(t *testing.T) {
 	}
 }
 
+func TestRegionDetection(t *testing.T) {
+	// TestDescription: Region value in annotation should take priority over providerId
+	reaper := newFakeReaperContext()
+	reaper.AsgValidation = false
+	reaper.DryRun = true
+
+	node := v1.Node{
+		Spec: v1.NodeSpec{
+			ProviderID: "aws:///us-west-2a/i-1234567890abcdef0",
+		},
+		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			"topology.kubernetes.io/region": "us-east-2",
+		}},
+	}
+
+	providerRegion := getNodeRegion(&node)
+	expectedRegion := "us-east-2"
+
+	if providerRegion != expectedRegion {
+		t.Fatalf("expected Region: %v, got: %v", expectedRegion, providerRegion)
+	}
+}
+
+
 func TestSkipLabelReaper(t *testing.T) {
 	reaper := newFakeReaperContext()
 	reaper.ReapUnknown = true
