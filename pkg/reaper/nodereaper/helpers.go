@@ -245,10 +245,17 @@ func getNodeAgeMinutes(n *v1.Node) int {
 }
 
 func getNodeRegion(n *v1.Node) string {
-	providerID := n.Spec.ProviderID
-	splitProviderID := strings.Split(providerID, "/")
-	regionFullName := splitProviderID[len(splitProviderID)-2]
-	regionName := regionFullName[:len(regionFullName)-1]
+	var regionName  = ""
+	labels := n.GetLabels()
+	if labels != nil {
+		regionName = labels["topology.kubernetes.io/region"]
+	}
+	if regionName == "" {
+		providerID := n.Spec.ProviderID
+		splitProviderID := strings.Split(providerID, "/")
+		regionFullName := splitProviderID[len(splitProviderID)-2]
+		regionName = regionFullName[:len(regionFullName)-1]
+	}
 	return regionName
 }
 
