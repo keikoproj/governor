@@ -197,6 +197,7 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.ReapOldThresholdMinutes = 36000
 	ctx.MaxKill = 3
 	ctx.DrainTimeoutSeconds = 600
+	ctx.IgnoreFailure = false
 	loadFakeAPI(&ctx)
 	return &ctx
 }
@@ -832,6 +833,33 @@ func TestReapOldDisabled(t *testing.T) {
 		FakeReaper:          reaper,
 		ExpectedUnready:     0,
 		ExpectedOldReapable: 0,
+		ExpectedTerminated:  0,
+		ExpectedDrained:     0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestIgnoreReapFailure(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.IgnoreFailure = true
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Ignore failure - old nodes should be cordoned",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   0,
+			Unhealthy: 1,
+			Desired:   1,
+		},
+		Nodes: []FakeNode{
+			{
+				state:      "Unknown",
+				ageMinutes: 43200,
+			},
+		},
+		FakeReaper:          reaper,
+		ExpectedUnready:     1,
+		ExpectedOldReapable: 1,
 		ExpectedTerminated:  0,
 		ExpectedDrained:     0,
 	}

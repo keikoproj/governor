@@ -59,4 +59,5 @@ spec:
             - --reap-old-throttle={{ .Values.reaper.nodereaper.reapoldthrottle }}
   {{- end }}
             - --max-kill-nodes={{ .Values.reaper.nodereaper.maxkillnodes }}
+            - --ignore-failure={{ .Values.reaper.nodereaper.ignoreFailure }}
 {{- end }}

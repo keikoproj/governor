@@ -69,6 +69,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.EC2Region = args.EC2Region
 	ctx.ReapOld = args.ReapOld
 	ctx.MaxKill = args.MaxKill
+	ctx.IgnoreFailure = args.IgnoreFailure
 
 	log.Infof("AWS Region = %v", ctx.EC2Region)
 	log.Infof("Dry Run = %t", ctx.DryRun)
@@ -175,6 +176,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	log.Infof("Reap Unjoined = %t, threshold = %v minutes by tag %v=%v", ctx.ReapUnjoined, ctx.ReapUnjoinedThresholdMinutes, ctx.ReapUnjoinedKey, ctx.ReapUnjoinedValue)
 	log.Infof("Reconsider Unreapable after = %v minutes", ctx.ReconsiderUnreapableAfter)
 	log.Infof("Drain Timeout = %d seconds", ctx.DrainTimeoutSeconds)
+	log.Infof("Ignore Failure = %t", ctx.IgnoreFailure)
 
 	if !ctx.SoftReap {
 		log.Warnf("--soft-reap is off !! will not consider pods when reaping")
