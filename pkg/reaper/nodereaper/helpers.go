@@ -101,15 +101,15 @@ func runCommandWithContext(call string, args []string, timeoutSeconds int64) (st
 	return string(out), nil
 }
 
-func (ctx *ReaperContext) uncordonNode(name string, dryRun bool, ingoreDrainFailure bool) error {
+func (ctx *ReaperContext) uncordonNode(name string, dryRun bool, ignoreDrainFailure bool) error {
 	uncordonArgs := []string{"uncordon", name}
 	uncordonCommand := ctx.KubectlLocalPath
-	if dryRun || ingoreDrainFailure {
-		log.Warnf("dry run / ignore drain failure is on, instance not uncordoned")
+	if dryRun || ignoreDrainFailure {
+		log.Warnf("dry run / ignore drain failure is on, instance %v remains cordoned", name)
 	} else {
 		_, err := runCommand(uncordonCommand, uncordonArgs)
 		if err != nil {
-			log.Errorf("failed to uncrodon node %v", name)
+			log.Errorf("failed to uncordon node %v", name)
 			return err
 		}
 	}
