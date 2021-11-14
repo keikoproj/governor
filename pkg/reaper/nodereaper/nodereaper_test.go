@@ -550,6 +550,34 @@ type stubASG struct {
 	DesiredCapacity    int64
 }
 
+func TestReaperContext_drainNode(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.IgnoreFailure = true
+	type args struct {
+		name   string
+		dryRun bool
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+		{
+			name:    "node with ignore failure true",
+			args: args{"temp", false},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := reaper.drainNode(tt.args.name, tt.args.dryRun); (err != nil) != tt.wantErr {
+				t.Errorf("drainNode() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestGetUnreadyNodesPositive(t *testing.T) {
 	reaper := newFakeReaperContext()
 	testCase := ReaperUnitTest{
@@ -842,7 +870,6 @@ func TestReapOldDisabled(t *testing.T) {
 func TestIgnoreReapFailure(t *testing.T) {
 	reaper := newFakeReaperContext()
 	reaper.IgnoreFailure = true
-
 	testCase := ReaperUnitTest{
 		TestDescription: "Ignore failure - old nodes should be cordoned",
 		InstanceGroup: FakeASG{
