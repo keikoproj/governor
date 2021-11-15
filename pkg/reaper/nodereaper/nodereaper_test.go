@@ -197,6 +197,7 @@ func newFakeReaperContext() *ReaperContext {
 	ctx.ReapOldThresholdMinutes = 36000
 	ctx.MaxKill = 3
 	ctx.DrainTimeoutSeconds = 600
+	ctx.IgnoreFailure = false
 	loadFakeAPI(&ctx)
 	return &ctx
 }
@@ -838,6 +839,32 @@ func TestReapOldDisabled(t *testing.T) {
 	testCase.Run(t, false)
 }
 
+func TestIgnoreReapFailure(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.IgnoreFailure = true
+	testCase := ReaperUnitTest{
+		TestDescription: "Ignore failure - old nodes should be cordoned",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   0,
+			Unhealthy: 1,
+			Desired:   1,
+		},
+		Nodes: []FakeNode{
+			{
+				state:      "Unknown",
+				ageMinutes: 43200,
+			},
+		},
+		FakeReaper:          reaper,
+		ExpectedUnready:     1,
+		ExpectedOldReapable: 1,
+		ExpectedTerminated:  0,
+		ExpectedDrained:     0,
+	}
+	testCase.Run(t, false)
+}
+
 func TestReapOldSelfEviction(t *testing.T) {
 	reaper := newFakeReaperContext()
 
@@ -1287,6 +1314,60 @@ func TestDryRun(t *testing.T) {
 		ExpectedDrainable:  1,
 		ExpectedDrained:    0,
 		ExpectedTerminated: 0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestIgnoreFailure(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.AsgValidation = false
+	reaper.DryRun = false
+	reaper.IgnoreFailure = true
+	reaper.DrainTimeoutSeconds = 0
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Ignore Failure - failed nodes should not be uncordoned",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   0,
+			Unhealthy: 2,
+			Desired:   3,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
+				state:    "NotReady",
+				ageMinutes: 43200,
+			},
+			{
+				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
+				state: 		"Unknown",
+				ageMinutes: 43200,
+			},
+			{
+				state:      "Unknown",
+				ageMinutes: 43200,
+			},
+		},
+		Events: []FakeEvent{
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  300,
+				reason: "NodeDrainFailed",
+				kind:   "Node",
+			},
+			{
+				node:   "ip-10-10-10-11.us-west-2.compute.local",
+				count:  20,
+				reason: "NodeDrainFailed",
+				kind:   "Node",
+			},
+		},
+		FakeReaper:				reaper,
+		ExpectedUnready:    	3,
+		ExpectedOldReapable:	3,
+		ExpectedDrainable:  	0,
+		ExpectedDrained:    	0,
 	}
 	testCase.Run(t, false)
 }

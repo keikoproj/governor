@@ -62,3 +62,5 @@ reaper:
     reapoldthrottle: 3600
     # Kill a maximum of 1 nodes per run considering throttle wait times
     maxkillnodes: 1
+    # Ignore Failure and keep the node as cordones
+    ignoreFailure: false

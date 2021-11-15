@@ -119,3 +119,5 @@ spec:
             - --reap-old-throttle=3600
             # Kill a maximum of 1 nodes per run considering throttle wait times
             - --max-kill-nodes=1
+            # Ignore Failure and keep the node as Cordoned, default False
+            - --ignore-failure=false
