@@ -357,12 +357,6 @@ func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
 
 }
 
-func (ctx *ReaperContext) runCommandWithContext(call string, args []string, timeoutSeconds int64) (string, error){
-	timeoutErr := fmt.Errorf("command execution timed out")
-	log.Error(timeoutErr)
-	return "", timeoutErr
-}
-
 func createFakeEvents(events []FakeEvent, ctx *ReaperContext) {
 	for _, e := range events {
 		fakeEvent := &v1.Event{
@@ -554,35 +548,6 @@ type stubASG struct {
 	HealthyInstances   int64
 	UnhealthyInstances int64
 	DesiredCapacity    int64
-}
-
-func TestReaperContext_drainNode(t *testing.T) {
-	reaper := newFakeReaperContext()
-	reaper.IgnoreFailure = true
-	reaper.DryRun = false
-	type args struct {
-		name   string
-		dryRun bool
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-		{
-			name:    "node with ignore failure true",
-			args: args{"temp", false},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := reaper.drainNode(tt.args.name, tt.args.dryRun); (err != nil) != tt.wantErr {
-				t.Errorf("drainNode() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
 }
 
 func TestGetUnreadyNodesPositive(t *testing.T) {
@@ -1361,7 +1326,7 @@ func TestIgnoreFailure(t *testing.T) {
 	reaper.DrainTimeoutSeconds = 0
 
 	testCase := ReaperUnitTest{
-		TestDescription: "Dry Run - nodes should not be terminated",
+		TestDescription: "Ignore Failure - failed nodes should not be uncordoned",
 		InstanceGroup: FakeASG{
 			Name:      "my-ig.cluster.k8s.local",
 			Healthy:   0,
@@ -1372,15 +1337,16 @@ func TestIgnoreFailure(t *testing.T) {
 			{
 				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
 				state:    "NotReady",
-			//	ageMinutes: 43400,
+				ageMinutes: 43200,
 			},
 			{
-				state:                 "Unknown",
-				//ageMinutes: 43100,
+				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
+				state: 		"Unknown",
+				ageMinutes: 43200,
 			},
 			{
-				state:                 "Unknown",
-			//ageMinutes: 43100,
+				state:      "Unknown",
+				ageMinutes: 43200,
 			},
 		},
 		Events: []FakeEvent{
@@ -1391,18 +1357,17 @@ func TestIgnoreFailure(t *testing.T) {
 				kind:   "Node",
 			},
 			{
-				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				node:   "ip-10-10-10-11.us-west-2.compute.local",
 				count:  20,
 				reason: "NodeDrainFailed",
 				kind:   "Node",
 			},
 		},
-		FakeReaper:         reaper,
-		ExpectedUnready:    3,
-		//ExpectedReapable:   2,
-		ExpectedDrainable:  0,
-		ExpectedDrained:    0,
-		//ExpectedTerminated: 2,
+		FakeReaper:				reaper,
+		ExpectedUnready:    	3,
+		ExpectedOldReapable:	3,
+		ExpectedDrainable:  	0,
+		ExpectedDrained:    	0,
 	}
 	testCase.Run(t, false)
 }
