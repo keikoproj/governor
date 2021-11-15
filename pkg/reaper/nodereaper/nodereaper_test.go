@@ -357,6 +357,12 @@ func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
 
 }
 
+func (ctx *ReaperContext) runCommandWithContext(call string, args []string, timeoutSeconds int64) (string, error){
+	timeoutErr := fmt.Errorf("command execution timed out")
+	log.Error(timeoutErr)
+	return "", timeoutErr
+}
+
 func createFakeEvents(events []FakeEvent, ctx *ReaperContext) {
 	for _, e := range events {
 		fakeEvent := &v1.Event{
@@ -553,6 +559,7 @@ type stubASG struct {
 func TestReaperContext_drainNode(t *testing.T) {
 	reaper := newFakeReaperContext()
 	reaper.IgnoreFailure = true
+	reaper.DryRun = false
 	type args struct {
 		name   string
 		dryRun bool
@@ -1342,6 +1349,59 @@ func TestDryRun(t *testing.T) {
 		ExpectedDrainable:  1,
 		ExpectedDrained:    0,
 		ExpectedTerminated: 0,
+	}
+	testCase.Run(t, false)
+}
+
+func TestIgnoreFailure(t *testing.T) {
+	reaper := newFakeReaperContext()
+	reaper.AsgValidation = false
+	reaper.DryRun = false
+	reaper.IgnoreFailure = true
+	reaper.DrainTimeoutSeconds = 0
+
+	testCase := ReaperUnitTest{
+		TestDescription: "Dry Run - nodes should not be terminated",
+		InstanceGroup: FakeASG{
+			Name:      "my-ig.cluster.k8s.local",
+			Healthy:   0,
+			Unhealthy: 2,
+			Desired:   3,
+		},
+		Nodes: []FakeNode{
+			{
+				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
+				state:    "Unknown",
+			},
+			{
+				state:                 "Unknown",
+				lastTransitionMinutes: 6,
+			},
+			{
+				state:                 "Unknown",
+				lastTransitionMinutes: 6,
+			},
+		},
+		Events: []FakeEvent{
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  300,
+				reason: "NodeDrainFailed",
+				kind:   "Node",
+			},
+			{
+				node:   "ip-10-10-10-10.us-west-2.compute.local",
+				count:  20,
+				reason: "NodeDrainFailed",
+				kind:   "Node",
+			},
+		},
+		FakeReaper:         reaper,
+		ExpectedUnready:    3,
+		ExpectedReapable:   2,
+		//ExpectedDrainable:  3,
+		ExpectedDrained:    0,
+		ExpectedTerminated: 2,
 	}
 	testCase.Run(t, false)
 }
