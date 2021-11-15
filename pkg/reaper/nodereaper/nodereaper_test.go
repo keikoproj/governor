@@ -1371,15 +1371,16 @@ func TestIgnoreFailure(t *testing.T) {
 		Nodes: []FakeNode{
 			{
 				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
-				state:    "Unknown",
+				state:    "NotReady",
+			//	ageMinutes: 43400,
 			},
 			{
 				state:                 "Unknown",
-				lastTransitionMinutes: 6,
+				//ageMinutes: 43100,
 			},
 			{
 				state:                 "Unknown",
-				lastTransitionMinutes: 6,
+			//ageMinutes: 43100,
 			},
 		},
 		Events: []FakeEvent{
@@ -1398,10 +1399,10 @@ func TestIgnoreFailure(t *testing.T) {
 		},
 		FakeReaper:         reaper,
 		ExpectedUnready:    3,
-		ExpectedReapable:   2,
-		//ExpectedDrainable:  3,
+		//ExpectedReapable:   2,
+		ExpectedDrainable:  0,
 		ExpectedDrained:    0,
-		ExpectedTerminated: 2,
+		//ExpectedTerminated: 2,
 	}
 	testCase.Run(t, false)
 }
