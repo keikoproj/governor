@@ -60,6 +60,7 @@ type Args struct {
 	ReapTainted                  []string
 	ReconsiderUnreapableAfter    float64
 	DrainTimeoutSeconds          int64
+	IgnoreFailure                bool
 }
 
 // ReaperContext holds the context of the node-reaper and target cluster
@@ -92,6 +93,7 @@ type ReaperContext struct {
 	ReapTainted                  []v1.Taint
 	ReconsiderUnreapableAfter    float64
 	DrainTimeoutSeconds          int64
+	IgnoreFailure			 	 bool
 	// runtime
 	UnreadyNodes              []v1.Node
 	AllNodes                  []v1.Node
