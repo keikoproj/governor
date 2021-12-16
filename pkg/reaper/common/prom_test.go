@@ -1,6 +1,10 @@
 package common
 
 import (
+<<<<<<< HEAD
+=======
+	"context"
+>>>>>>> 7a298b8 (Pushgateway API)
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
@@ -37,6 +41,10 @@ func TestAPIs(t *testing.T) {
 	tags["app"] = "test"
 	tags["namespace"] = "test-ns"
 
+<<<<<<< HEAD
 	err := api.SetMetricValue("abc", tags, 50)
+=======
+	err := api.SetMetricValue(context.Background(), "abc", tags, 50)
+>>>>>>> 7a298b8 (Pushgateway API)
 	assert.Nil(t, err)
 }

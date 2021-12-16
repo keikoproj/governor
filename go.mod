@@ -6,6 +6,10 @@ require (
 	github.com/Pallinder/go-randomdata v1.1.0
 	github.com/aws/aws-sdk-go v1.32.4
 	github.com/evanphx/json-patch v4.1.0+incompatible // indirect
+<<<<<<< HEAD
+=======
+	github.com/google/btree v1.0.0 // indirect
+>>>>>>> 7a298b8 (Pushgateway API)
 	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d // indirect
 	github.com/gregjones/httpcache v0.0.0-20170728041850-787624de3eb7 // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
@@ -16,12 +20,19 @@ require (
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
+<<<<<<< HEAD
 	github.com/prometheus/common v0.32.0 // indirect
+=======
+	github.com/prometheus/common v0.32.0
+>>>>>>> 7a298b8 (Pushgateway API)
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/afero v1.2.0 // indirect
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.3.1
+<<<<<<< HEAD
 	github.com/stretchr/testify v1.5.1
+=======
+>>>>>>> 7a298b8 (Pushgateway API)
 	gopkg.in/inf.v0 v0.9.0 // indirect
 	k8s.io/api v0.0.0-20181204000039-89a74a8d264d
 	k8s.io/apimachinery v0.0.0-20181127025237-2b1284ed4c93
