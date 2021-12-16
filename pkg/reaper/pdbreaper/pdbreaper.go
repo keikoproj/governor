@@ -480,16 +480,19 @@ func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bo
 }
 
 func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, eventReason string, value float64) error {
-	var tags = make(map[string]string)
-	tags["namespace"] = pdb.GetNamespace()
-	tags["pdb"] = pdb.GetName()
-	tags["reason"] = eventReason
+	if ctx.MetricsAPI != nil {
+		var tags = make(map[string]string)
+		tags["namespace"] = pdb.GetNamespace()
+		tags["pdb"] = pdb.GetName()
+		tags["reason"] = eventReason
 
-	var err error
-	if err = ctx.MetricsAPI.SetMetricValue(PdbReaperResultMetricName, tags, value); err == nil {
-		log.Infof("Pushed new metric value %f at %s for reason %s on pdb %s in namespace %s", value, PdbReaperResultMetricName, eventReason, pdb.GetName(), pdb.GetNamespace())
-	} else {
-		log.Warnf("Pushing metric error:%v", err)
+		var err error
+		if err = ctx.MetricsAPI.SetMetricValue(PdbReaperResultMetricName, tags, value); err == nil {
+			log.Infof("Pushed new metric value %f at %s for reason %s on pdb %s in namespace %s", value, PdbReaperResultMetricName, eventReason, pdb.GetName(), pdb.GetNamespace())
+		} else {
+			log.Warnf("Pushing metric error:%v", err)
+		}
+		return err
 	}
-	return err
+	return nil
 }
