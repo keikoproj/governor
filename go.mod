@@ -20,6 +20,7 @@ require (
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 <<<<<<< HEAD
+<<<<<<< HEAD
 	github.com/prometheus/client_golang v1.11.0
 <<<<<<< HEAD
 	github.com/prometheus/common v0.32.0 // indirect
@@ -27,6 +28,9 @@ require (
 =======
 	github.com/prometheus/client_golang v1.10.0
 >>>>>>> 20e0205 (Use prometheus client api 1.10.0)
+=======
+	github.com/prometheus/client_golang v1.9.0
+>>>>>>> 136471a (Use client_golang 1.9.0 instead)
 	github.com/prometheus/common v0.32.0
 >>>>>>> 7a298b8 (Pushgateway API)
 	github.com/sirupsen/logrus v1.6.0
