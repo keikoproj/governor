@@ -21,6 +21,7 @@ require (
 	github.com/pkg/errors v0.9.1
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 	github.com/prometheus/client_golang v1.11.0
 <<<<<<< HEAD
 	github.com/prometheus/common v0.32.0 // indirect
@@ -31,6 +32,9 @@ require (
 =======
 	github.com/prometheus/client_golang v1.9.0
 >>>>>>> 136471a (Use client_golang 1.9.0 instead)
+=======
+	github.com/prometheus/client_golang v1.11.0
+>>>>>>> 9ef8028 (Try v1.11.0 and go 1.13)
 	github.com/prometheus/common v0.32.0
 >>>>>>> 7a298b8 (Pushgateway API)
 	github.com/sirupsen/logrus v1.6.0
