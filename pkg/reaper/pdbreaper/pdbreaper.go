@@ -481,6 +481,9 @@ func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bo
 
 func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, eventReason string, value float64) error {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 214028c (Add reason metrics)
 	if ctx.MetricsAPI != nil {
 		var tags = make(map[string]string)
 		tags["namespace"] = pdb.GetNamespace()
@@ -494,6 +497,7 @@ func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, ev
 			log.Warnf("Pushing metric error:%v", err)
 		}
 		return err
+<<<<<<< HEAD
 	}
 	return nil
 =======
@@ -510,4 +514,8 @@ func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, ev
 	}
 	return err
 >>>>>>> 25d4af5 (Add reason metrics)
+=======
+	}
+	return nil
+>>>>>>> 214028c (Add reason metrics)
 }
