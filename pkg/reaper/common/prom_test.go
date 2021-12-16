@@ -1,7 +1,6 @@
 package common
 
 import (
-	"context"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
@@ -38,6 +37,6 @@ func TestAPIs(t *testing.T) {
 	tags["app"] = "test"
 	tags["namespace"] = "test-ns"
 
-	err := api.SetMetricValue(context.Background(), "abc", tags, 50)
+	err := api.SetMetricValue("abc", tags, 50)
 	assert.Nil(t, err)
 }
