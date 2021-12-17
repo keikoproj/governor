@@ -618,3 +618,35 @@ func TestAllNotReadyThresholNotMet(t *testing.T) {
 	}
 	testCase.Run(t)
 }
+
+func TestWithPushgateway(t *testing.T) {
+	reaper := _fakeReaperContext()
+	reaper.DryRun = true
+	reaper.PromPushgateway = "http://127.0.0.1:9091"
+	testCase := ReaperUnitTest{
+		TestDescription: "Tests execution scenario of pdb reaper with DryRun on",
+		FakeReaper:      reaper,
+		Mocks: KubernetesMockAPI{
+			Namespaces: []MockNamespace{
+				_mockNamespace("namespace-1"),
+				_mockNamespace("namespace-2"),
+				_mockNamespace("namespace-3"),
+			},
+			PDBs: []MockPDB{
+				_mockPDB("pdb-1", "namespace-1", nil, &intStrOneInt, _selector("app=app-1"), 1, 1),
+				_mockPDB("pdb-2", "namespace-1", nil, &intStrOneInt, _selector("app=app-1"), 1, 1),
+				_mockPDB("pdb-3", "namespace-2", nil, &intStrZeroInt, _selector("app=app-2"), 1, 0),
+				_mockPDB("pdb-4", "namespace-3", nil, &intStrOneInt, _selector("app=app-3"), 1, 0),
+			},
+			Pods: []MockPod{
+				_mockPod("pod-1", "namespace-1", map[string]string{"app": "app-1"}, false, 0, false),
+				_mockPod("pod-2", "namespace-1", map[string]string{"app": "app-1"}, false, 0, false),
+				_mockPod("pod-3", "namespace-2", map[string]string{"app": "app-2"}, false, 0, false),
+				_mockPod("pod-4", "namespace-3", map[string]string{"app": "app-3"}, true, 5, false),
+			},
+		},
+		ExpectedReapableBudgets: 4,
+		ExpectedReapedBudgets:   0,
+	}
+	testCase.Run(t)
+}
