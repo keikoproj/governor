@@ -117,6 +117,10 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	log.Infof("Minimum seconds to wait when considering pods in not-ready state = %v", ctx.ReapNotReadyThreshold)
 	log.Infof("All pods must be in not-ready state = %t", ctx.AllNotReady)
 
+	if args.PromPushgateway != "" {
+		log.Infof("Prometheus pushgateway %s", args.PromPushgateway)
+	}
+
 	if len(ctx.ExcludedNamespaces) > 0 {
 		log.Infof("Excluded namespaces = %+v", ctx.ExcludedNamespaces)
 	}
