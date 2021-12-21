@@ -151,7 +151,6 @@ func (ctx *ReaperContext) scan() error {
 		}
 
 		ctx.ClusterBlockingPodDisruptionBudgets[namespace] = append(ctx.ClusterBlockingPodDisruptionBudgets[namespace], pdb)
-
 		ctx.exposeMetric(pdb, EventReasonPodDisruptionBudgetDeleted, 0)
 	}
 
@@ -189,7 +188,6 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 			log.Warnf(err.Error())
 		}
 		ctx.exposeMetric(pdb, EventReasonPodDisruptionBudgetDeleted, 1)
-
 		ctx.ReapedPodDisruptionBudgetCount++
 
 	}
@@ -480,10 +478,6 @@ func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bo
 }
 
 func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, eventReason string, value float64) error {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 214028c (Add reason metrics)
 	if ctx.MetricsAPI != nil {
 		var tags = make(map[string]string)
 		tags["namespace"] = pdb.GetNamespace()
@@ -497,25 +491,6 @@ func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, ev
 			log.Warnf("Pushing metric error:%v", err)
 		}
 		return err
-<<<<<<< HEAD
 	}
 	return nil
-=======
-	var tags = make(map[string]string)
-	tags["namespace"] = pdb.GetNamespace()
-	tags["pdb"] = pdb.GetName()
-	tags["reason"] = eventReason
-
-	var err error
-	if err = ctx.MetricsAPI.SetMetricValue(PdbReaperResultMetricName, tags, value); err == nil {
-		log.Infof("Pushed new metric value %f at %s for reason %s on pdb %s in namespace %s", value, PdbReaperResultMetricName, eventReason, pdb.GetName(), pdb.GetNamespace())
-	} else {
-		log.Warnf("Pushing metric error:%v", err)
-	}
-	return err
->>>>>>> 25d4af5 (Add reason metrics)
-=======
-	}
-	return nil
->>>>>>> 214028c (Add reason metrics)
 }

@@ -81,7 +81,6 @@ func NewReaperContext(args *Args) *ReaperContext {
 	if args.PromPushgateway != "" {
 		ctx.MetricsAPI = common.NewPrometheusAPI(args.PromPushgateway)
 	}
-
 	return ctx
 }
 
@@ -120,7 +119,6 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	if args.PromPushgateway != "" {
 		log.Infof("Prometheus pushgateway %s", args.PromPushgateway)
 	}
-
 	if len(ctx.ExcludedNamespaces) > 0 {
 		log.Infof("Excluded namespaces = %+v", ctx.ExcludedNamespaces)
 	}

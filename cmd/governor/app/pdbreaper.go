@@ -53,5 +53,4 @@ func init() {
 	pdbReaperCmd.Flags().IntVar(&pdbReaperArgs.ReapNotReadyThreshold, "not-ready-threshold-seconds", 1800, "Minimum seconds to wait when considering pods in not-ready state")
 	pdbReaperCmd.Flags().BoolVar(&pdbReaperArgs.AllNotReady, "all-not-ready", false, "Only deletes PDBs for not-ready pods when all pods are in not-ready state")
 	pdbReaperCmd.Flags().StringVar(&pdbReaperArgs.PromPushgateway, "prometheus-pushgateway", "", "Prometheus pushgateway URL")
-
 }
