@@ -47,7 +47,12 @@ const (
 	EventMessageMultipleFmt  = "The PodDisruptionBudget %v has been marked for deletion due to multiple budgets targeting same pods"
 	EventMessageCrashLoopFmt = "The PodDisruptionBudget %v has been marked for deletion due to pods in CrashLoopBackOff blocking disruptions"
 	EventMessageNotReadyFmt  = "The PodDisruptionBudget %v has been marked for deletion due to pods in not-ready blocking disruptions"
+
+	PdbReaperResultMetricName = "governor_pdb_reaper_result"
 )
+
+var EventReasons = [...]string{EventReasonPodDisruptionBudgetDeleted, EventReasonBlockingDetected, EventReasonMultipleDetected,
+	EventReasonBlockingCrashLoopDetected, EventReasonBlockingNotReadyStateDetected}
 
 // Run is the main runner function for pdb-reaper, and will initialize and start the pdb-reaper
 func Run(args *Args) error {
@@ -146,6 +151,7 @@ func (ctx *ReaperContext) scan() error {
 		}
 
 		ctx.ClusterBlockingPodDisruptionBudgets[namespace] = append(ctx.ClusterBlockingPodDisruptionBudgets[namespace], pdb)
+		ctx.exposeMetric(pdb, EventReasonPodDisruptionBudgetDeleted, 0)
 	}
 
 	return nil
@@ -182,7 +188,7 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 			log.Warnf(err.Error())
 		}
 		ctx.ReapedPodDisruptionBudgetCount++
-
+		ctx.exposeMetric(pdb, EventReasonPodDisruptionBudgetDeleted, 1)
 	}
 	return nil
 }
@@ -216,6 +222,9 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					if err != nil {
 						log.Warnf(err.Error())
 					}
+					ctx.exposeMetric(pdb, EventReasonBlockingDetected, 1)
+				} else {
+					ctx.exposeMetric(pdb, EventReasonBlockingDetected, 0)
 				}
 			}
 
@@ -228,6 +237,9 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 						log.Warnf(err.Error())
 					}
 				}
+				ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 1)
+			} else {
+				ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 0)
 			}
 
 			if ctx.ReapNotReady {
@@ -239,6 +251,9 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 						log.Warnf(err.Error())
 					}
 				}
+				ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 1)
+			} else {
+				ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 0)
 			}
 		}
 	}
@@ -279,6 +294,11 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 				if err != nil {
 					log.Warnf(err.Error())
 				}
+				ctx.exposeMetric(pdb, EventReasonMultipleDetected, 1)
+			}
+		} else {
+			for _, pdb := range pdbs {
+				ctx.exposeMetric(pdb, EventReasonMultipleDetected, 0)
 			}
 		}
 	}
@@ -453,4 +473,22 @@ func isPodsInNotReadyState(pods []corev1.Pod, thresholdSeconds int, allPods bool
 func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bool {
 	currentTimestamp := metav1.Time{Time: time.Now()}
 	return currentTimestamp.Time.Sub(startTime.Time) >= time.Duration(thresholdSeconds)*time.Second
+}
+
+func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, eventReason string, value float64) error {
+	if ctx.MetricsAPI != nil {
+		var tags = make(map[string]string)
+		tags["namespace"] = pdb.GetNamespace()
+		tags["pdb"] = pdb.GetName()
+		tags["reason"] = eventReason
+
+		var err error
+		if err = ctx.MetricsAPI.SetMetricValue(PdbReaperResultMetricName, tags, value); err == nil {
+			log.Infof("Pushed new metric value %f at %s for reason %s on pdb %s in namespace %s", value, PdbReaperResultMetricName, eventReason, pdb.GetName(), pdb.GetNamespace())
+		} else {
+			log.Warnf("Pushing metric error:%v", err)
+		}
+		return err
+	}
+	return nil
 }
