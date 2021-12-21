@@ -1,13 +1,6 @@
 package common
 
 import (
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-	"context"
->>>>>>> 7a298b8 (Pushgateway API)
-=======
->>>>>>> 3d3655f (Fix test case error)
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
@@ -44,14 +37,6 @@ func TestAPIs(t *testing.T) {
 	tags["app"] = "test"
 	tags["namespace"] = "test-ns"
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 	err := api.SetMetricValue("abc", tags, 50)
-=======
-	err := api.SetMetricValue(context.Background(), "abc", tags, 50)
->>>>>>> 7a298b8 (Pushgateway API)
-=======
-	err := api.SetMetricValue("abc", tags, 50)
->>>>>>> 3d3655f (Fix test case error)
 	assert.Nil(t, err)
 }
