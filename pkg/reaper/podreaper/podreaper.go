@@ -54,6 +54,8 @@ const (
 	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
 	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
 	NamespaceExclusionEnabledAnnotationValue = "true"
+
+	TerminatedPodMetric = "TerminatedPod"
 )
 
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
@@ -61,6 +63,8 @@ func Run(ctx *ReaperContext) error {
 	log.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
+
+	ctx.exposeMetric(TerminatedPodMetric, 0)
 
 	err := ctx.getPods()
 	if err != nil {
@@ -189,6 +193,8 @@ func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 			log.Warnf("dry-run is on, pod will not be reaped")
 		}
 	}
+
+	ctx.exposeMetric(TerminatedPodMetric, float64(ctx.ReapedPods))
 	return nil
 }
 
@@ -373,6 +379,17 @@ func (ctx *ReaperContext) getPods() error {
 	return nil
 }
 
+func (ctx *ReaperContext) exposeMetric(metric string, value float64) error {
+	if ctx.MetricsAPI == nil {
+		return nil
+	}
+	if err := ctx.MetricsAPI.SetMetricValue(metric, map[string]string{}, value); err != nil {
+		return errors.Wrap(err, "failed to push metric")
+	}
+	log.Infof("metric push: Metric<value: %f, name: %s, pod: %s/%s>", value, metric)
+	return nil
+}
+
 func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.StuckPods = make(map[string]string)
 	ctx.CompletedPods = make(map[string]string)
@@ -382,6 +399,10 @@ func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.ReapFailed = args.ReapFailed
 	ctx.ReapCompletedAfter = args.ReapCompletedAfter
 	ctx.ReapFailedAfter = args.ReapFailedAfter
+
+	if args.PromPushgateway != "" {
+		ctx.MetricsAPI = common.NewPrometheusAPI(args.PromPushgateway)
+	}
 
 	ctx.SoftReap = args.SoftReap
 	if !ctx.SoftReap {

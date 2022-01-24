@@ -46,6 +46,7 @@ var podReapCmd = &cobra.Command{
 func init() {
 	reapCmd.AddCommand(podReapCmd)
 	podReapCmd.Flags().StringVar(&podReaperArgs.K8sConfigPath, "kubeconfig", "", "Absolute path to the kubeconfig file")
+	podReapCmd.Flags().StringVar(&podReaperArgs.PromPushgateway, "prometheus-pushgateway", "", "Prometheus pushgateway URL")
 	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapAfter, "reap-after", 10, "Reaping threshold in minutes")
 	podReapCmd.Flags().BoolVar(&podReaperArgs.LocalMode, "local-mode", false, "Use cluster external auth")
 	podReapCmd.Flags().BoolVar(&podReaperArgs.DryRun, "dry-run", false, "Will not terminate pods")

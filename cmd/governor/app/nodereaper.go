@@ -42,6 +42,7 @@ func init() {
 	reapCmd.AddCommand(nodeReapCmd)
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.K8sConfigPath, "kubeconfig", "", "Absolute path to the kubeconfig file")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.KubectlLocalPath, "kubectl", "/usr/local/bin/kubectl", "Absolute path to the kubectl binary")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.PromPushgateway, "prometheus-pushgateway", "", "Prometheus pushgateway URL")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.EC2Region, "region", "", "AWS Region to operate in")
 	nodeReapCmd.Flags().Float64Var(&nodeReaperArgs.ReapAfter, "reap-after", 10, "Reaping threshold in minutes")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.LocalMode, "local-mode", false, "Use cluster external auth")
