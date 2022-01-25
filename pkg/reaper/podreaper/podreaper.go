@@ -104,6 +104,7 @@ func (ctx *ReaperContext) Reap() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to reap failed pods")
 	}
+	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, float64(ctx.ReapedPods))
 	return nil
 }
 
@@ -195,7 +196,6 @@ func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 		}
 	}
 
-	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, float64(ctx.ReapedPods))
 	return nil
 }
 
@@ -389,7 +389,7 @@ func (ctx *ReaperContext) exposeMetric(metric, reason string, value float64) err
 	if err := ctx.MetricsAPI.SetMetricValue(metric, tags, value); err != nil {
 		return errors.Wrap(err, "failed to push metric")
 	}
-	log.Infof("metric push: Metric<value: %f, name: %s, pod: %s/%s>", value, metric)
+	log.Infof("metric push: Metric<value: %f, name: %s, reason: %s>", value, metric, reason)
 	return nil
 }
 

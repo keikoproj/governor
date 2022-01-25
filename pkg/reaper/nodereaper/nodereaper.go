@@ -567,10 +567,11 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			if err != nil {
 				return err
 			}
-			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, 1)
 
 			// Throttle deletion
 			ctx.TerminatedInstances++
+			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+
 			log.Infof("starting deletion throttle wait -> %vs", ctx.AgeReapThrottle)
 			time.Sleep(time.Second * time.Duration(ctx.AgeReapThrottle))
 		} else {
@@ -627,9 +628,10 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 				return err
 			}
 
-			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonUnhealthy, NodeReaperResultMetricName, 1)
 			// Throttle deletion
 			ctx.TerminatedInstances++
+			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonUnhealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+
 			log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
 			time.Sleep(time.Second * time.Duration(ctx.ReapThrottle))
 		} else {
