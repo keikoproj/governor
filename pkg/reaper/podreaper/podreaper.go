@@ -55,7 +55,8 @@ const (
 	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
 	NamespaceExclusionEnabledAnnotationValue = "true"
 
-	TerminatedPodMetric = "TerminatedPod"
+	TerminatedPodReason       = "TerminatedPod"
+	PodReaperResultMetricName = "governor_pod_reaper_result"
 )
 
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
@@ -64,7 +65,7 @@ func Run(ctx *ReaperContext) error {
 		FullTimestamp: true,
 	})
 
-	ctx.exposeMetric(TerminatedPodMetric, 0)
+	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, 0)
 
 	err := ctx.getPods()
 	if err != nil {
@@ -194,7 +195,7 @@ func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 		}
 	}
 
-	ctx.exposeMetric(TerminatedPodMetric, float64(ctx.ReapedPods))
+	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, float64(ctx.ReapedPods))
 	return nil
 }
 
@@ -379,11 +380,13 @@ func (ctx *ReaperContext) getPods() error {
 	return nil
 }
 
-func (ctx *ReaperContext) exposeMetric(metric string, value float64) error {
+func (ctx *ReaperContext) exposeMetric(metric, reason string, value float64) error {
 	if ctx.MetricsAPI == nil {
 		return nil
 	}
-	if err := ctx.MetricsAPI.SetMetricValue(metric, map[string]string{}, value); err != nil {
+	var tags = make(map[string]string)
+	tags["reason"] = reason
+	if err := ctx.MetricsAPI.SetMetricValue(metric, tags, value); err != nil {
 		return errors.Wrap(err, "failed to push metric")
 	}
 	log.Infof("metric push: Metric<value: %f, name: %s, pod: %s/%s>", value, metric)

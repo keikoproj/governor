@@ -181,9 +181,7 @@ func (ctx *ReaperContext) exposeMetric(node, instance, reason, metric string, va
 	var tags = make(map[string]string)
 	tags["node"] = node
 	tags["instanceId"] = instance
-	if reason != "" {
-		tags["reason"] = reason
-	}
+	tags["reason"] = reason
 
 	if err := ctx.MetricsAPI.SetMetricValue(metric, tags, value); err != nil {
 		return errors.Wrap(err, "failed to push metric")
