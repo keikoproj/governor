@@ -54,6 +54,9 @@ const (
 	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
 	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
 	NamespaceExclusionEnabledAnnotationValue = "true"
+
+	TerminatedPodReason       = "TerminatedPod"
+	PodReaperResultMetricName = "governor_pod_reaper_result"
 )
 
 // Run is the main runner function for pod-reaper, and will initialize and start the pod-reaper
@@ -61,6 +64,8 @@ func Run(ctx *ReaperContext) error {
 	log.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
+
+	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, 0)
 
 	err := ctx.getPods()
 	if err != nil {
@@ -99,6 +104,7 @@ func (ctx *ReaperContext) Reap() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to reap failed pods")
 	}
+	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, float64(ctx.ReapedPods))
 	return nil
 }
 
@@ -189,6 +195,7 @@ func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 			log.Warnf("dry-run is on, pod will not be reaped")
 		}
 	}
+
 	return nil
 }
 
@@ -373,6 +380,19 @@ func (ctx *ReaperContext) getPods() error {
 	return nil
 }
 
+func (ctx *ReaperContext) exposeMetric(metric, reason string, value float64) error {
+	if ctx.MetricsAPI == nil {
+		return nil
+	}
+	var tags = make(map[string]string)
+	tags["reason"] = reason
+	if err := ctx.MetricsAPI.SetMetricValue(metric, tags, value); err != nil {
+		return errors.Wrap(err, "failed to push metric")
+	}
+	log.Infof("metric push: Metric<value: %f, name: %s, reason: %s>", value, metric, reason)
+	return nil
+}
+
 func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.StuckPods = make(map[string]string)
 	ctx.CompletedPods = make(map[string]string)
@@ -382,6 +402,10 @@ func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.ReapFailed = args.ReapFailed
 	ctx.ReapCompletedAfter = args.ReapCompletedAfter
 	ctx.ReapFailedAfter = args.ReapFailedAfter
+
+	if args.PromPushgateway != "" {
+		ctx.MetricsAPI = common.NewPrometheusAPI(args.PromPushgateway)
+	}
 
 	ctx.SoftReap = args.SoftReap
 	if !ctx.SoftReap {

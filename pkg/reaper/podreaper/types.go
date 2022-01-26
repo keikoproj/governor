@@ -18,6 +18,7 @@ package podreaper
 import (
 	"time"
 
+	"github.com/keikoproj/governor/pkg/reaper/common"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -40,6 +41,7 @@ type ReaperContext struct {
 	ReapFailed           bool
 	SoftReap             bool
 	DryRun               bool
+	MetricsAPI           common.MetricsAPI
 }
 
 // Args is the argument struct for pod-reaper
@@ -53,6 +55,7 @@ type Args struct {
 	ReapCompletedAfter float64
 	ReapFailed         bool
 	ReapFailedAfter    float64
+	PromPushgateway    string
 }
 
 type FinishTimes []time.Time

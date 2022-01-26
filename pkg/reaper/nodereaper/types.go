@@ -22,6 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/keikoproj/governor/pkg/reaper/common"
+	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -61,6 +63,7 @@ type Args struct {
 	ReconsiderUnreapableAfter    float64
 	DrainTimeoutSeconds          int64
 	IgnoreFailure                bool
+	PromPushgateway              string
 }
 
 // ReaperContext holds the context of the node-reaper and target cluster
@@ -93,7 +96,7 @@ type ReaperContext struct {
 	ReapTainted                  []v1.Taint
 	ReconsiderUnreapableAfter    float64
 	DrainTimeoutSeconds          int64
-	IgnoreFailure			 	 bool
+	IgnoreFailure                bool
 	// runtime
 	UnreadyNodes              []v1.Node
 	AllNodes                  []v1.Node
@@ -113,6 +116,7 @@ type ReaperContext struct {
 	DrainableInstances        map[string]string
 	TerminatedInstances       int
 	DrainedInstances          int
+	MetricsAPI                common.MetricsAPI
 }
 
 // AgeDrainReapableInstances holds an age-reapable node
@@ -168,4 +172,20 @@ func (ctx *ReaperContext) addAgeDrainReapable(name string, id string, age int) {
 	ctx.AgeDrainReapableInstances = append(ctx.AgeDrainReapableInstances, instance)
 	// Sort by age after adding a new object
 	sort.Sort(AgeSorter(ctx.AgeDrainReapableInstances))
+}
+
+func (ctx *ReaperContext) exposeMetric(node, instance, reason, metric string, value float64) error {
+	if ctx.MetricsAPI == nil {
+		return nil
+	}
+	var tags = make(map[string]string)
+	tags["node"] = node
+	tags["instanceId"] = instance
+	tags["reason"] = reason
+
+	if err := ctx.MetricsAPI.SetMetricValue(metric, tags, value); err != nil {
+		return errors.Wrap(err, "failed to push metric")
+	}
+	log.Infof("metric push: Metric<value: %f, name: %s, instance: %s, node: %s>", value, metric, instance, node)
+	return nil
 }
