@@ -44,6 +44,11 @@ const (
 	reapUnknownDisabledLabelKey = "governor.keikoproj.io/reap-unknown-disabled"
 	reapFlappyDisabledLabelKey  = "governor.keikoproj.io/reap-flappy-disabled"
 	reapOldDisabledLabelKey     = "governor.keikoproj.io/reap-old-disabled"
+
+	NodeReaperResultMetricName = "governor_node_reaper_result"
+	drainFailedMetric          = "DrainFailedAgeExpiredNode"
+	terminationReasonUnhealthy = "TerminateUnhealthyNode"
+	terminationReasonHealthy   = "TerminateAgeExpiredNode"
 )
 
 // Validate command line arguments
@@ -234,6 +239,10 @@ func Run(args *Args) error {
 	})
 
 	ctx := &ReaperContext{}
+
+	if args.PromPushgateway != "" {
+		ctx.MetricsAPI = common.NewPrometheusAPI(args.PromPushgateway)
+	}
 
 	err := ctx.validateArguments(args)
 	if err != nil {
@@ -561,6 +570,8 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 			// Throttle deletion
 			ctx.TerminatedInstances++
+			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+
 			log.Infof("starting deletion throttle wait -> %vs", ctx.AgeReapThrottle)
 			time.Sleep(time.Second * time.Duration(ctx.AgeReapThrottle))
 		} else {
@@ -599,6 +610,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 			err := ctx.drainNode(instance.NodeName, ctx.DryRun)
 			if err != nil {
+				ctx.exposeMetric(instance.NodeName, instance.InstanceID, drainFailedMetric, NodeReaperResultMetricName, 1)
 				return err
 			}
 		}
@@ -618,6 +630,8 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 
 			// Throttle deletion
 			ctx.TerminatedInstances++
+			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonUnhealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+
 			log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
 			time.Sleep(time.Second * time.Duration(ctx.ReapThrottle))
 		} else {

@@ -39,6 +39,7 @@ type Args struct {
 	ReapNotReady          bool
 	ReapNotReadyThreshold int
 	AllNotReady           bool
+	PromPushgateway       string
 }
 
 // ReaperContext holds the context of the pdb-reaper and target cluster
@@ -61,6 +62,8 @@ type ReaperContext struct {
 	ExcludedNamespaces                         []string
 	ReapablePodDisruptionBudgetsCount          int
 	ReapedPodDisruptionBudgetCount             int
+	PromPushgateway                            string
+	MetricsAPI                                 common.MetricsAPI
 }
 
 func NewReaperContext(args *Args) *ReaperContext {
@@ -73,6 +76,10 @@ func NewReaperContext(args *Args) *ReaperContext {
 
 	if err := ctx.validate(args); err != nil {
 		log.Fatalf("failed to validate arguments: %v", err.Error())
+	}
+
+	if args.PromPushgateway != "" {
+		ctx.MetricsAPI = common.NewPrometheusAPI(args.PromPushgateway)
 	}
 
 	return ctx
@@ -88,6 +95,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	ctx.ExcludedNamespaces = args.ExcludedNamespaces
 	ctx.ReapNotReady = args.ReapNotReady
 	ctx.AllNotReady = args.AllNotReady
+	ctx.PromPushgateway = args.PromPushgateway
 
 	if args.CrashLoopRestartCount < 1 {
 		return errors.Errorf("--crashloop-restart-count value cannot be less than 1")
@@ -108,6 +116,10 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	log.Infof("Reap PDBs with pods in not-ready state = %t", ctx.ReapNotReady)
 	log.Infof("Minimum seconds to wait when considering pods in not-ready state = %v", ctx.ReapNotReadyThreshold)
 	log.Infof("All pods must be in not-ready state = %t", ctx.AllNotReady)
+
+	if args.PromPushgateway != "" {
+		log.Infof("Prometheus pushgateway %s", args.PromPushgateway)
+	}
 
 	if len(ctx.ExcludedNamespaces) > 0 {
 		log.Infof("Excluded namespaces = %+v", ctx.ExcludedNamespaces)
