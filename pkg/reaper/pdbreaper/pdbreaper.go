@@ -236,8 +236,10 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					if err != nil {
 						log.Warnf(err.Error())
 					}
+					ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 1)
+				} else {
+					ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 0)
 				}
-				ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 1)
 			} else {
 				ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 0)
 			}
@@ -250,8 +252,10 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					if err != nil {
 						log.Warnf(err.Error())
 					}
+					ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 1)
+				} else {
+					ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 0)
 				}
-				ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 1)
 			} else {
 				ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 0)
 			}
