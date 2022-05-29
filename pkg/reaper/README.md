@@ -124,7 +124,7 @@ Flags:
       --reap-after float                   Reaping threshold in minutes (default 10)
       --reap-flappy                        Terminate nodes which have flappy readiness (default true)
       --reap-old                           Terminate nodes older than --reap-old-threshold days
-      --reap-old-threshold-minutes int32   Reap N minute old nodes (default 30)
+      --reap-old-threshold-minutes int32   Reap N minute old nodes (default 30 days/43200 minutes)
       --reap-old-throttle int              Post terminate wait in seconds for old nodes (default 300)
       --reap-throttle int                  Post terminate wait in seconds for unhealthy nodes(default 300)
       --reap-unknown                       Terminate nodes where State = Unknown (default true)
