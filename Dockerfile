@@ -1,4 +1,5 @@
-FROM golang:1.13-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.17-alpine AS builder
+ARG TARGETOS TARGETARCH
 
 WORKDIR /go/src/github.com/keikoproj/governor
 COPY . .

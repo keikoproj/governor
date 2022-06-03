@@ -4,10 +4,9 @@
 COMMIT=`git rev-parse HEAD`
 BUILD=`date +%FT%T%z`
 LDFLAG_LOCATION=github.com/keikoproj/governor/cmd/governor/app
-
 LDFLAGS=-ldflags "-X ${LDFLAG_LOCATION}.buildDate=${BUILD} -X ${LDFLAG_LOCATION}.gitCommit=${COMMIT}"
-
-
+TARGETOS ?= linux
+TARGETARCH ?= amd64
 GIT_TAG=$(shell git rev-parse --short HEAD)
 
 IMAGE ?= governor:latest
@@ -15,7 +14,7 @@ IMAGE ?= governor:latest
 all: clean build test
 
 build:
-	GO111MODULE=on CGO_ENABLED=0 go build ${LDFLAGS} -o _output/bin/governor github.com/keikoproj/governor/cmd/governor
+	GO111MODULE=on CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build ${LDFLAGS} -o _output/bin/governor github.com/keikoproj/governor/cmd/governor
 
 docker-build:
 	docker build -t $(IMAGE) .
