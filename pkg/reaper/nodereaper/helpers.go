@@ -27,6 +27,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/pkg/errors"
@@ -209,6 +212,46 @@ func (ctx *ReaperContext) publishEvent(namespace string, event *v1.Event) error 
 	return nil
 }
 
+func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, nodeType string) error {
+	log.Infof("obtaining lock for a %s node %s (%s)", nodeType, nodeName, instanceID)
+
+	timestamp := time.Now().Format(time.RFC3339)
+
+	lock := LockRecord{
+		LockType:   nodeType,
+		NodeName:   nodeName,
+		InstanceID: instanceID,
+		NodeType:   nodeType,
+		CreatedAt:  timestamp,
+		// TODO: make configurable
+		ExpiresAt: time.Now().Unix() + int64(30), // expire locks automatically
+	}
+
+	return lock.obtainLock(ddbAPI)
+}
+
+func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
+	serializedLock, err := dynamodbattribute.MarshalMap(l)
+	if err != nil {
+		return err
+	}
+	input := &dynamodb.PutItemInput{
+		Item: serializedLock,
+		// TODO: make configurable
+		TableName:           aws.String("governor-locks"),
+		ConditionExpression: aws.String("attribute_not_exists(LockType)"),
+	}
+
+	_, err = ddbAPI.PutItem(input)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("obtaining lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
+
+	return err
+}
+
 func nodeHasActivePods(n *v1.Node, allPods []v1.Pod) bool {
 	nodeName := n.ObjectMeta.Name
 	log.Infof("inspecting pods assigned to %v", nodeName)
@@ -245,7 +288,7 @@ func getNodeAgeMinutes(n *v1.Node) int {
 }
 
 func getNodeRegion(n *v1.Node) string {
-	var regionName  = ""
+	var regionName = ""
 	labels := n.GetLabels()
 	if labels != nil {
 		regionName = labels["topology.kubernetes.io/region"]

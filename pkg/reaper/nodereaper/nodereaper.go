@@ -22,8 +22,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/pkg/errors"
@@ -261,6 +263,7 @@ func Run(args *Args) error {
 
 	awsAuth.EC2 = ec2.New(sess)
 	awsAuth.ASG = autoscaling.New(sess)
+	awsAuth.DDB = dynamodb.New(sess)
 
 	log.Infoln("starting api scanner")
 	err = ctx.scan(awsAuth)
@@ -499,24 +502,24 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			return nil
 		}
 
-		masterCount, err := getHealthyMasterCount(ctx.KubernetesClient)
-		if err != nil {
-			return err
-		}
-
-		selfMaster, err := isMaster(instance.NodeName, ctx.KubernetesClient)
-		if err != nil {
-			return err
-		}
-
 		// Skip if target node is self
 		if instance.NodeName == ctx.SelfNode {
 			log.Infof("self node termination attempted, skipping")
 			continue
 		}
 
+		masterCount, err := getHealthyMasterCount(ctx.KubernetesClient)
+		if err != nil {
+			return err
+		}
+
+		isMasterNode, err := isMaster(instance.NodeName, ctx.KubernetesClient)
+		if err != nil {
+			return err
+		}
 		// Must have 3 healthy masters in order to terminate a master node
-		if selfMaster {
+		if isMasterNode {
+			// TODO: make configurable
 			if masterCount < 3 {
 				log.Infof("%v", masterCount)
 				log.Infof("less than 3 healthy master nodes, skipping %v", instance.NodeName)
@@ -551,6 +554,23 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		if ctx.DryRun {
 			log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
 		}
+
+		// TEST
+		err = obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, "master")
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+					log.Infof("another master roll is in progress, skipping node %s (%s)", instance.NodeName, instance.InstanceID)
+				} else {
+					log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, aerr.Message())
+				}
+			} else {
+				log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, err.Error())
+			}
+
+			continue
+		}
+
 		err = ctx.drainNode(instance.NodeName, ctx.DryRun)
 		if err != nil {
 			return err

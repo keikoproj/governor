@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/keikoproj/governor/pkg/reaper/common"
@@ -32,6 +33,7 @@ import (
 type ReaperAwsAuth struct {
 	EC2 ec2iface.EC2API
 	ASG autoscalingiface.AutoScalingAPI
+	DDB dynamodbiface.DynamoDBAPI
 }
 
 // Args is the argument struct for node-reaper
@@ -130,6 +132,15 @@ type ReapableInstance struct {
 	NodeName           string
 	InstanceID         string
 	RequiresValidation bool
+}
+
+type LockRecord struct {
+	LockType   string
+	NodeName   string
+	InstanceID string
+	NodeType   string
+	CreatedAt  string
+	ExpiresAt  int64
 }
 
 // AgeSorter sorts age-reapable nodes by their AgeMinutes
