@@ -247,7 +247,7 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 		return err
 	}
 
-	log.Infof("obtaining lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
+	log.Infof("successfully obtained lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
 
 	return err
 }
