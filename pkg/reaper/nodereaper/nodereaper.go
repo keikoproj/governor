@@ -26,6 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/pkg/errors"
@@ -555,8 +556,8 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
 		}
 
-		// TEST
-		err = obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, "master")
+		// TODO: also defer lock release once done
+		err, lock := obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, "master")
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); ok {
 				if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
@@ -570,6 +571,11 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 			continue
 		}
+
+		// TODO: wrap the whole loop body in a func so defer is called per iteration
+		defer func(lock LockRecord, ddbAPI dynamodbiface.DynamoDBAPI) {
+			_ = lock.releaseLock(ddbAPI)
+		}(lock, w.DDB)
 
 		err = ctx.drainNode(instance.NodeName, ctx.DryRun)
 		if err != nil {
@@ -641,6 +647,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 		}
 
 		if !ctx.DryRun {
+			// TODO: lock if master
 			log.Infof("reaping unhealthy node %v -> %v", instance.NodeName, instance)
 
 			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)

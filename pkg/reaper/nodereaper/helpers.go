@@ -212,7 +212,7 @@ func (ctx *ReaperContext) publishEvent(namespace string, event *v1.Event) error 
 	return nil
 }
 
-func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, nodeType string) error {
+func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, nodeType string) (error, LockRecord) {
 	log.Infof("obtaining lock for a %s node %s (%s)", nodeType, nodeName, instanceID)
 
 	timestamp := time.Now().Format(time.RFC3339)
@@ -227,7 +227,8 @@ func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, node
 		ExpiresAt: time.Now().Unix() + int64(30), // expire locks automatically
 	}
 
-	return lock.obtainLock(ddbAPI)
+	err := lock.obtainLock(ddbAPI)
+	return err, lock
 }
 
 func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
@@ -250,6 +251,29 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 	log.Infof("successfully obtained lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
 
 	return err
+}
+
+func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
+	input := &dynamodb.DeleteItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"LockType": {
+				S: aws.String(l.LockType),
+			},
+			"InstanceID": {
+				S: aws.String(l.InstanceID),
+			},
+		},
+		// TODO: make configurable
+		TableName: aws.String("governor-locks"),
+	}
+
+	_, err := ddbAPI.DeleteItem(input)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("failed to release lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
+	return nil
 }
 
 func nodeHasActivePods(n *v1.Node, allPods []v1.Pod) bool {
