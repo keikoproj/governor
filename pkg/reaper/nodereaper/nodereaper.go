@@ -26,7 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/pkg/errors"
@@ -77,6 +77,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.EC2Region = args.EC2Region
 	ctx.ReapOld = args.ReapOld
 	ctx.MaxKill = args.MaxKill
+	ctx.ClusterID = args.ClusterID
 
 	log.Infof("AWS Region = %v", ctx.EC2Region)
 	log.Infof("Dry Run = %t", ctx.DryRun)
@@ -497,7 +498,6 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 	log.Infof("Kill order: %v", ctx.AgeKillOrder)
 
 	for _, instance := range ctx.AgeDrainReapableInstances {
-
 		if ctx.TerminatedInstances >= ctx.MaxKill {
 			log.Infof("max kill nodes reached, %v/%v nodes have been terminated in current run", ctx.TerminatedInstances, ctx.MaxKill)
 			return nil
@@ -539,7 +539,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				continue
 			}
 
-			nodesReady, err := allNodesAreReady(ctx.KubernetesClient)
+			nodesReady, err := allNodesAreReady(ctx.KubernetesClient, nodeSelectorAll)
 			if err != nil {
 				return err
 			}
@@ -556,52 +556,139 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
 		}
 
-		// TODO: also defer lock release once done
-		err, lock := obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, "master")
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-					log.Infof("another master roll is in progress, skipping node %s (%s)", instance.NodeName, instance.InstanceID)
+		var lock LockRecord
+
+		// Dry run does not need to bother with locks
+		if !ctx.DryRun && isMasterNode {
+			lock, err = obtainReapLock(w.DDB, ctx.ClusterID, instance.NodeName, instance.InstanceID, "master")
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); ok {
+					if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+						// repeat getting the lock
+						result, err := w.DDB.GetItem(&dynamodb.GetItemInput{
+							ProjectionExpression: aws.String("ClusterID"),
+							Key: map[string]*dynamodb.AttributeValue{
+								"LockType": {
+									S: aws.String(controlPlaneType),
+								},
+							},
+							TableName: aws.String("governor-locks"),
+						})
+
+						if err != nil || result.Item == nil {
+							// don't care, skip this node then
+							// TODO: log error
+							continue
+						}
+
+						item := LockRecord{}
+
+						err = dynamodbattribute.UnmarshalMap(result.Item, &item)
+						if err != nil {
+							panic(fmt.Sprintf("Failed to unmarshal Record, %v", err))
+						}
+
+						if item.ClusterID == ctx.ClusterID {
+							_, err := w.DDB.DeleteItem(&dynamodb.DeleteItemInput{
+								Key: map[string]*dynamodb.AttributeValue{
+									"LockType": {
+										S: aws.String(controlPlaneType),
+									},
+								},
+								TableName: aws.String("governor-locks"),
+							})
+							if err != nil {
+								log.Errorf("got error calling DeleteItem: %s", err)
+								return err
+							}
+						}
+
+						log.Infof("another master roll is in progress, skipping node %s (%s)", instance.NodeName, instance.InstanceID)
+					} else {
+						log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, aerr.Message())
+					}
 				} else {
-					log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, aerr.Message())
+					log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, err.Error())
 				}
-			} else {
-				log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, err.Error())
+
+				continue
 			}
-
-			continue
 		}
 
-		// TODO: wrap the whole loop body in a func so defer is called per iteration
-		defer func(lock LockRecord, ddbAPI dynamodbiface.DynamoDBAPI) {
-			_ = lock.releaseLock(ddbAPI)
-		}(lock, w.DDB)
+		var controlPlaneCheckError error
 
-		err = ctx.drainNode(instance.NodeName, ctx.DryRun)
-		if err != nil {
-			return err
-		}
+		// wrap into a func to make sure defer works as expected
+		err = func() error {
+			defer func() {
+				if controlPlaneCheckError == nil {
+					// eat the error, the func will log if there's one
+					_ = lock.releaseLock(w.DDB)
+				}
+			}()
 
-		err = dumpSpec(instance.NodeName, ctx.KubernetesClient)
-		if err != nil {
-			log.Warnf("failed to dump spec for node %v, %v", instance.NodeName, err)
-		}
-
-		if !ctx.DryRun {
-			log.Infof("reaping old node %v -> %v", instance.NodeName, instance.InstanceID)
-			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
+			err = ctx.drainNode(instance.NodeName, ctx.DryRun)
 			if err != nil {
 				return err
 			}
 
-			// Throttle deletion
-			ctx.TerminatedInstances++
-			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+			err = dumpSpec(instance.NodeName, ctx.KubernetesClient)
+			if err != nil {
+				log.Warnf("failed to dump spec for node %v, %v", instance.NodeName, err)
+			}
 
-			log.Infof("starting deletion throttle wait -> %vs", ctx.AgeReapThrottle)
-			time.Sleep(time.Second * time.Duration(ctx.AgeReapThrottle))
-		} else {
-			log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
+			if !ctx.DryRun {
+				log.Infof("reaping old node %v -> %v", instance.NodeName, instance.InstanceID)
+				err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
+				if err != nil {
+					return err
+				}
+
+				// Throttle deletion
+				ctx.TerminatedInstances++
+				ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+
+				log.Infof("starting deletion throttle wait -> %vs", ctx.AgeReapThrottle)
+				time.Sleep(time.Second * time.Duration(ctx.AgeReapThrottle))
+			} else {
+				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
+			}
+
+			// Do not release the lock until control plane is healthy
+			controlPlaneHealthCheckStart := time.Now()
+			// TODO: configurable
+			maxWait := time.Minute * 30
+
+			for time.Since(controlPlaneHealthCheckStart) < maxWait {
+				controlPlaneReady, err := allNodesAreReady(ctx.KubernetesClient, nodeSelectorControlPlane)
+				if controlPlaneReady {
+					controlPlaneCheckError = nil
+					break
+				}
+				if err != nil {
+					log.Infof("waiting for control plane to become healthy before releasing the lock")
+					controlPlaneCheckError = err
+				}
+
+				if !controlPlaneReady {
+					log.Infof("waiting for control plane to become healthy before releasing the lock")
+				}
+
+				// TODO: configurable
+				time.Sleep(time.Second * 5)
+			}
+
+			// if the control plane did not become healthy in time,
+			// the next loop will fail the ready check, so just log the error here
+			if controlPlaneCheckError != nil {
+				log.Warnf("error while checking control plane health: %s", controlPlaneCheckError.Error())
+			}
+
+			return nil
+		}()
+
+		// only return on error, otherwise continue looping
+		if err != nil {
+			return err
 		}
 	}
 	log.Infof("reap cycle completed, terminated %v instances", ctx.TerminatedInstances)

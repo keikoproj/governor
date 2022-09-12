@@ -38,6 +38,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+const (
+	controlPlaneType = "control-plane"
+)
+
+type NodeSelector string
+
+const (
+	nodeSelectorAll          NodeSelector = ""
+	nodeSelectorNode         NodeSelector = "node-role.kubernetes.io/node="
+	nodeSelectorControlPlane NodeSelector = "node-role.kubernetes.io/control-plane="
+)
+
 func parseTaint(t string) (v1.Taint, bool, error) {
 	var key, value string
 	var effect v1.TaintEffect
@@ -212,23 +224,20 @@ func (ctx *ReaperContext) publishEvent(namespace string, event *v1.Event) error 
 	return nil
 }
 
-func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, nodeType string) (error, LockRecord) {
+func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, clusterID, nodeName, instanceID, nodeType string) (LockRecord, error) {
 	log.Infof("obtaining lock for a %s node %s (%s)", nodeType, nodeName, instanceID)
 
 	timestamp := time.Now().Format(time.RFC3339)
 
 	lock := LockRecord{
-		LockType:   nodeType,
+		ClusterID:  clusterID,
 		NodeName:   nodeName,
 		InstanceID: instanceID,
-		NodeType:   nodeType,
 		CreatedAt:  timestamp,
-		// TODO: make configurable
-		ExpiresAt: time.Now().Unix() + int64(30), // expire locks automatically
 	}
 
 	err := lock.obtainLock(ddbAPI)
-	return err, lock
+	return lock, err
 }
 
 func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
@@ -248,7 +257,7 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 		return err
 	}
 
-	log.Infof("successfully obtained lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
+	log.Infof("successfully obtained lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
 
 	return err
 }
@@ -257,7 +266,7 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"LockType": {
-				S: aws.String(l.LockType),
+				S: aws.String(controlPlaneType),
 			},
 			"InstanceID": {
 				S: aws.String(l.InstanceID),
@@ -272,7 +281,7 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 		return err
 	}
 
-	log.Infof("failed to release lock for a %s node %s (%s)", l.NodeType, l.NodeName, l.InstanceID)
+	log.Infof("failed to release lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
 	return nil
 }
 
@@ -455,8 +464,14 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
-func allNodesAreReady(kubeClient kubernetes.Interface) (bool, error) {
+func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (bool, error) {
 	corev1 := kubeClient.CoreV1()
+
+	opts := metav1.ListOptions{}
+
+	if nodeType != nodeSelectorAll {
+		opts.LabelSelector = string(nodeType)
+	}
 
 	nodeList, err := corev1.Nodes().List(metav1.ListOptions{})
 	if err != nil {

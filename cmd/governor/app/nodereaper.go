@@ -67,4 +67,5 @@ func init() {
 	nodeReapCmd.Flags().Float64Var(&nodeReaperArgs.ReconsiderUnreapableAfter, "reconsider-unreapable-after", 45, "Time (in minutes) after which reconsider unreapable nodes")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.DrainTimeoutSeconds, "drain-timeout", 600, "Time (in seconds) to wait before drain command timeout")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.IgnoreFailure, "ignore-failure", false, "Keep the failed node as cordoned")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ClusterID, "cluster-id", "", "Unique cluster identifier; used for node reaper locks")
 }
