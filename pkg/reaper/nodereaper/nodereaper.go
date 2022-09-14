@@ -77,6 +77,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.MaxKill = args.MaxKill
 	ctx.ControlPlaneNodeCount = args.ControlPlaneNodeCount
 	ctx.ClusterID = args.ClusterID
+	ctx.LocksTableName = args.LocksTableName
 
 	log.Infof("AWS Region = %v", ctx.EC2Region)
 	log.Infof("Dry Run = %t", ctx.DryRun)
@@ -177,12 +178,15 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 
 	ctx.DrainTimeoutSeconds = args.DrainTimeoutSeconds
 
+	ctx.NodeHealthcheckTimeoutSeconds = args.NodeHealthcheckTimeoutSeconds
+
 	log.Infof("Reap Unknown = %t, threshold = %v minutes", ctx.ReapUnknown, ctx.TimeToReap)
 	log.Infof("Reap Unready = %t, threshold = %v minutes", ctx.ReapUnready, ctx.TimeToReap)
 	log.Infof("Reap Ghost = %t, threshold = immediate", ctx.ReapGhost)
 	log.Infof("Reap Unjoined = %t, threshold = %v minutes by tag %v=%v", ctx.ReapUnjoined, ctx.ReapUnjoinedThresholdMinutes, ctx.ReapUnjoinedKey, ctx.ReapUnjoinedValue)
 	log.Infof("Reconsider Unreapable after = %v minutes", ctx.ReconsiderUnreapableAfter)
 	log.Infof("Drain Timeout = %d seconds", ctx.DrainTimeoutSeconds)
+	log.Infof("Node Healthcheck Timeout = %d seconds", ctx.NodeHealthcheckTimeoutSeconds)
 
 	if !ctx.SoftReap {
 		log.Warnf("--soft-reap is off !! will not consider pods when reaping")
@@ -559,12 +563,12 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		// Dry run does not need to bother with locks
 		// and only master nodes need one
 		if !ctx.DryRun && isMasterNode {
-			lock, err = obtainReapLock(w.DDB, ctx.ClusterID, instance.NodeName, instance.InstanceID, "master")
+			lock, err = ctx.obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, controlPlaneType)
 			if err != nil {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
 				// because the lock affects only master nodes
 				// TODO: alert on long-lived locks and/or failure to clean up
-				tryClearLock(w.DDB, err, ctx.ClusterID, instance.NodeName, instance.InstanceID)
+				ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
 				continue
 			}
 		}
@@ -607,7 +611,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
 			}
 
-			controlPlaneCheckError = waitForNodesReady(ctx.KubernetesClient)
+			controlPlaneCheckError = ctx.waitForNodesReady(nodeSelectorControlPlane)
 
 			// if the control plane did not become healthy in time,
 			// the next loop will fail the ready check, so just log the error here
@@ -657,12 +661,12 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 		var lock LockRecord
 
 		if !ctx.DryRun && isMasterNode {
-			lock, err = obtainReapLock(w.DDB, ctx.ClusterID, instance.NodeName, instance.InstanceID, "master")
+			lock, err = ctx.obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, controlPlaneType)
 			if err != nil {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
 				// because the lock affects only master nodes
 				// TODO: alert on long-lived locks and/or failure to clean up (maybe emit metric here)
-				tryClearLock(w.DDB, err, ctx.ClusterID, instance.NodeName, instance.InstanceID)
+				ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
 				continue
 			}
 		}

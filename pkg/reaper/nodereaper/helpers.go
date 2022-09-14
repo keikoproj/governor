@@ -225,16 +225,17 @@ func (ctx *ReaperContext) publishEvent(namespace string, event *v1.Event) error 
 	return nil
 }
 
-func obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, clusterID, nodeName, instanceID, nodeType string) (LockRecord, error) {
+func (ctx *ReaperContext) obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, nodeType string) (LockRecord, error) {
 	log.Infof("obtaining lock for a %s node %s (%s)", nodeType, nodeName, instanceID)
 
 	timestamp := time.Now().Format(time.RFC3339)
 
 	lock := LockRecord{
-		ClusterID:  clusterID,
+		ClusterID:  ctx.ClusterID,
 		NodeName:   nodeName,
 		InstanceID: instanceID,
 		CreatedAt:  timestamp,
+		tableName:  ctx.LocksTableName,
 	}
 
 	err := lock.obtainLock(ddbAPI)
@@ -247,9 +248,8 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 		return err
 	}
 	input := &dynamodb.PutItemInput{
-		Item: serializedLock,
-		// TODO: make configurable
-		TableName:           aws.String("governor-locks"),
+		Item:                serializedLock,
+		TableName:           aws.String(l.tableName),
 		ConditionExpression: aws.String("attribute_not_exists(LockType)"),
 	}
 
@@ -267,7 +267,7 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 }
 
 // TODO: should this be (ddbAPI, lock) instead? Or Lock.tryClearLock(ddbAPI)?
-func tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, clusterID, nodeName, instanceID string) {
+func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, nodeName, instanceID string) {
 	if aerr, ok := err.(awserr.Error); ok {
 		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
 			// check if we need to do lock cleanup here
@@ -283,7 +283,7 @@ func tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, clusterID, nodeNa
 
 			if err != nil || result.Item == nil {
 				// don't care, skip this node then
-				log.Errorf("failed to get lock record for cluster %s: %s", clusterID, err)
+				log.Errorf("failed to get lock record for cluster %s: %s", ctx.ClusterID, err)
 				return
 			}
 
@@ -291,14 +291,14 @@ func tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, clusterID, nodeNa
 
 			err = dynamodbattribute.UnmarshalMap(result.Item, &item)
 			if err != nil {
-				log.Errorf("failed to unmarshal lock record for cluster %s: %s", clusterID, err)
+				log.Errorf("failed to unmarshal lock record for cluster %s: %s", ctx.ClusterID, err)
 				return
 			}
 
 			// this lock belongs to this cluster and should have been released
-			if item.ClusterID == clusterID {
+			if item.ClusterID == ctx.ClusterID {
 				if err := item.releaseLock(ddbAPI); err != nil {
-					log.Errorf("failed to clean up a leftover lock for cluster %s: %s", clusterID, err)
+					log.Errorf("failed to clean up a leftover lock for cluster %s: %s", ctx.ClusterID, err)
 				}
 			} else {
 				log.Infof("another master roll is in progress, skipping node %s (%s)", nodeName, instanceID)
@@ -321,8 +321,7 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 				S: aws.String(l.InstanceID),
 			},
 		},
-		// TODO: make configurable
-		TableName:           aws.String("governor-locks"),
+		TableName:           aws.String(l.tableName),
 		ConditionExpression: aws.String(fmt.Sprintf("ClusterID = %s", l.ClusterID)),
 	}
 
@@ -517,15 +516,14 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
-func waitForNodesReady(kubeClient kubernetes.Interface) error {
+func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
 	var controlPlaneCheckError error
 	// Do not release the lock until control plane is healthy
 	controlPlaneHealthCheckStart := time.Now()
-	// TODO: configurable
-	maxWait := time.Minute * 30
+	maxWait := time.Second * time.Duration(ctx.NodeHealthcheckTimeoutSeconds)
 
 	for time.Since(controlPlaneHealthCheckStart) < maxWait {
-		controlPlaneReady, err := allNodesAreReady(kubeClient, nodeSelectorControlPlane)
+		controlPlaneReady, err := allNodesAreReady(ctx.KubernetesClient, selector)
 		if controlPlaneReady {
 			controlPlaneCheckError = nil
 			break
@@ -539,8 +537,7 @@ func waitForNodesReady(kubeClient kubernetes.Interface) error {
 			log.Infof("waiting for control plane to become healthy before releasing the lock")
 		}
 
-		// TODO: configurable
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second * time.Duration(ctx.NodeHealthcheckIntervalSeconds))
 	}
 
 	return controlPlaneCheckError
