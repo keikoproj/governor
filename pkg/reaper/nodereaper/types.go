@@ -215,3 +215,7 @@ func (ctx *ReaperContext) exposeMetric(node, instance, reason, metric string, va
 	log.Infof("metric push: Metric<value: %f, name: %s, instance: %s, node: %s>", value, metric, instance, node)
 	return nil
 }
+
+func (ctx *ReaperContext) shouldLock() bool {
+	return ctx.LocksTableName != ""
+}

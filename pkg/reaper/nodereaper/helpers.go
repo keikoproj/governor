@@ -49,6 +49,8 @@ const (
 	nodeSelectorAll          NodeSelector = ""
 	nodeSelectorNode         NodeSelector = "node-role.kubernetes.io/node="
 	nodeSelectorControlPlane NodeSelector = "node-role.kubernetes.io/control-plane="
+	controlPlaneNodeLabel    string       = "node-role.kubernetes.io/control-plane"
+	lockTableClusterIDKey                 = "ClusterID"
 )
 
 func parseTaint(t string) (v1.Taint, bool, error) {
@@ -271,14 +273,15 @@ func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err err
 	if aerr, ok := err.(awserr.Error); ok {
 		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
 			// check if we need to do lock cleanup here
+
 			result, err := ddbAPI.GetItem(&dynamodb.GetItemInput{
-				ProjectionExpression: aws.String("ClusterID"),
+				ProjectionExpression: aws.String(lockTableClusterIDKey),
 				Key: map[string]*dynamodb.AttributeValue{
 					"LockType": {
 						S: aws.String(controlPlaneType),
 					},
 				},
-				TableName: aws.String("governor-locks"),
+				TableName: aws.String(ctx.LocksTableName),
 			})
 
 			if err != nil || result.Item == nil {
@@ -322,7 +325,7 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 			},
 		},
 		TableName:           aws.String(l.tableName),
-		ConditionExpression: aws.String(fmt.Sprintf("ClusterID = %s", l.ClusterID)),
+		ConditionExpression: aws.String(fmt.Sprintf("%s = %s", lockTableClusterIDKey, l.ClusterID)),
 	}
 
 	_, err := ddbAPI.DeleteItem(input)
@@ -485,7 +488,7 @@ func nodeMeetsReapAfterThreshold(minuteThreshold float64, minutesSinceTransition
 	return false
 }
 
-func isMaster(node string, kubeClient kubernetes.Interface) (bool, error) {
+func isControlPlane(node string, kubeClient kubernetes.Interface) (bool, error) {
 	corev1 := kubeClient.CoreV1()
 	nodeObject, err := corev1.Nodes().Get(node, metav1.GetOptions{})
 	if err != nil {
@@ -493,7 +496,7 @@ func isMaster(node string, kubeClient kubernetes.Interface) (bool, error) {
 		return false, err
 	}
 	labels := nodeObject.ObjectMeta.GetLabels()
-	if labels["kubernetes.io/role"] == "master" {
+	if labels[controlPlaneNodeLabel] == "" {
 		return true, nil
 	}
 	return false, nil

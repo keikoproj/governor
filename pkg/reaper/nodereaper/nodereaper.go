@@ -76,8 +76,6 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.ReapOld = args.ReapOld
 	ctx.MaxKill = args.MaxKill
 	ctx.ControlPlaneNodeCount = args.ControlPlaneNodeCount
-	ctx.ClusterID = args.ClusterID
-	ctx.LocksTableName = args.LocksTableName
 
 	log.Infof("AWS Region = %v", ctx.EC2Region)
 	log.Infof("Dry Run = %t", ctx.DryRun)
@@ -234,6 +232,16 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 			log.Errorln("in-cluster auth failed")
 			return err
 		}
+	}
+
+	if args.LocksTableName != "" {
+		if ctx.ClusterID == "" {
+			err := fmt.Errorf("must provide --cluster-id if --locks-table-name is set")
+			return err
+		}
+
+		ctx.ClusterID = args.ClusterID
+		ctx.LocksTableName = args.LocksTableName
 	}
 
 	return nil
@@ -517,12 +525,12 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			return err
 		}
 
-		isMasterNode, err := isMaster(instance.NodeName, ctx.KubernetesClient)
+		isControlPlaneNode, err := isControlPlane(instance.NodeName, ctx.KubernetesClient)
 		if err != nil {
 			return err
 		}
 		// Must have 3 healthy masters in order to terminate a master node
-		if isMasterNode {
+		if isControlPlaneNode {
 			if masterCount < ctx.ControlPlaneNodeCount {
 				log.Infof("%v", masterCount)
 				log.Infof("less than 3 healthy master nodes, skipping %v", instance.NodeName)
@@ -562,7 +570,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 		// Dry run does not need to bother with locks
 		// and only master nodes need one
-		if !ctx.DryRun && isMasterNode {
+		if !ctx.DryRun && isControlPlaneNode && ctx.shouldLock() {
 			lock, err = ctx.obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, controlPlaneType)
 			if err != nil {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
@@ -653,18 +661,18 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 		}
 
-		isMasterNode, err := isMaster(instance.NodeName, ctx.KubernetesClient)
+		isControlPlaneNode, err := isControlPlane(instance.NodeName, ctx.KubernetesClient)
 		if err != nil {
 			return err
 		}
 
 		var lock LockRecord
 
-		if !ctx.DryRun && isMasterNode {
+		if !ctx.DryRun && isControlPlaneNode && ctx.shouldLock() {
 			lock, err = ctx.obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, controlPlaneType)
 			if err != nil {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
-				// because the lock affects only master nodes
+				// because the lock affects only control plane nodes
 				// TODO: alert on long-lived locks and/or failure to clean up (maybe emit metric here)
 				ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
 				continue
