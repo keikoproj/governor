@@ -301,8 +301,8 @@ func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err err
 				return
 			}
 
-			// this lock belongs to this cluster and should have been released
 			if item.ClusterID == ctx.ClusterID {
+				// this lock belongs to this cluster and should have been released
 				if err := item.releaseLock(ddbAPI); err != nil {
 					log.Errorf("failed to clean up a leftover lock for cluster %s: %s", ctx.ClusterID, err)
 				}
