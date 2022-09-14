@@ -269,7 +269,6 @@ func (l *LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 	return err
 }
 
-// TODO: should this be (ddbAPI, lock) instead? Or Lock.tryClearLock(ddbAPI)?
 func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, lock *LockRecord) {
 	if aerr, ok := err.(awserr.Error); ok {
 		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
