@@ -511,7 +511,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 	// and only control plane nodes need one
 	lock, err = ctx.obtainReapLock(w.DDB, "node name", "node id", controlPlaneType)
 	if err != nil {
-		// we try to clear the lock is possible, but on failure we skip this node and continue
+		// we try to clear the lock if possible, but on failure we skip this node and continue
 		// because the lock affects only master nodes
 		// TODO: alert on long-lived locks and/or failure to clean up
 		ctx.tryClearLock(w.DDB, err, "node name", "node id")
