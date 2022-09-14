@@ -325,7 +325,7 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 			},
 		},
 		TableName:           aws.String(l.tableName),
-		ConditionExpression: aws.String("ClusterID = :cid"),
+		ConditionExpression: aws.String(fmt.Sprintf("%s = :cid", lockTableClusterIDKey)),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":cid": {
 				S: aws.String(l.ClusterID),
