@@ -58,6 +58,7 @@ func init() {
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.FlapCount, "flap-count", 5, "Only reap instances which have flapped atleast N times over the last hour")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.ReapThrottle, "reap-throttle", 300, "Post terminate wait in seconds for unhealthy nodes")
 	nodeReapCmd.Flags().IntVar(&nodeReaperArgs.MaxKill, "max-kill-nodes", 1, "Kill up to N nodes per job run, considering throttle wait times")
+	nodeReapCmd.Flags().IntVar(&nodeReaperArgs.ControlPlaneNodeCount, "control-plane-node-count", 3, "Expected number of control plane nodes")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.AgeReapThrottle, "reap-old-throttle", 1800, "Post terminate wait in seconds for old nodes")
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapOldThresholdMinutes, "reap-old-threshold-minutes", 43200, "Reap N minute old nodes")
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapUnjoinedThresholdMinutes, "reap-unjoined-threshold-minutes", 15, "Reap N minute old nodes")
@@ -66,5 +67,9 @@ func init() {
 	nodeReapCmd.Flags().StringArrayVar(&nodeReaperArgs.ReapTainted, "reap-tainted", []string{}, "marks nodes with a given taint reapable, must be in format of comma separated taints key=value:effect, key:effect or key")
 	nodeReapCmd.Flags().Float64Var(&nodeReaperArgs.ReconsiderUnreapableAfter, "reconsider-unreapable-after", 45, "Time (in minutes) after which reconsider unreapable nodes")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.DrainTimeoutSeconds, "drain-timeout", 600, "Time (in seconds) to wait before drain command timeout")
+	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.NodeHealthcheckIntervalSeconds, "node-healthcheck-interval", 5, "Time (in seconds) to wait between node healthchecks")
+	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.NodeHealthcheckTimeoutSeconds, "node-healthcheck-timeout", 1800, "Time (in seconds) to wait before node healthcheck timeout")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.IgnoreFailure, "ignore-failure", false, "Keep the failed node as cordoned")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ClusterID, "cluster-id", "", "Unique cluster identifier; used for node reaper locks")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.LocksTableName, "locks-table-name", "", "DynamoDB table name for storing the lock objects (default not set)")
 }

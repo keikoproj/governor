@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/keikoproj/governor/pkg/reaper/common"
@@ -32,38 +33,44 @@ import (
 type ReaperAwsAuth struct {
 	EC2 ec2iface.EC2API
 	ASG autoscalingiface.AutoScalingAPI
+	DDB dynamodbiface.DynamoDBAPI
 }
 
 // Args is the argument struct for node-reaper
 type Args struct {
-	K8sConfigPath                string
-	ReaperConfigFilePath         string
-	KubectlLocalPath             string
-	EC2Region                    string
-	ReapUnjoinedKey              string
-	ReapUnjoinedValue            string
-	DryRun                       bool
-	SoftReap                     bool
-	LocalMode                    bool
-	ReapUnknown                  bool
-	ReapUnready                  bool
-	ReapGhost                    bool
-	ReapUnjoined                 bool
-	ReapFlappy                   bool
-	AsgValidation                bool
-	ReapOld                      bool
-	FlapCount                    int32
-	ReapOldThresholdMinutes      int32
-	ReapUnjoinedThresholdMinutes int32
-	MaxKill                      int
-	ReapThrottle                 int64
-	AgeReapThrottle              int64
-	ReapAfter                    float64
-	ReapTainted                  []string
-	ReconsiderUnreapableAfter    float64
-	DrainTimeoutSeconds          int64
-	IgnoreFailure                bool
-	PromPushgateway              string
+	K8sConfigPath                  string
+	ReaperConfigFilePath           string
+	KubectlLocalPath               string
+	EC2Region                      string
+	ReapUnjoinedKey                string
+	ReapUnjoinedValue              string
+	DryRun                         bool
+	SoftReap                       bool
+	LocalMode                      bool
+	ReapUnknown                    bool
+	ReapUnready                    bool
+	ReapGhost                      bool
+	ReapUnjoined                   bool
+	ReapFlappy                     bool
+	AsgValidation                  bool
+	ReapOld                        bool
+	FlapCount                      int32
+	ReapOldThresholdMinutes        int32
+	ReapUnjoinedThresholdMinutes   int32
+	MaxKill                        int
+	ControlPlaneNodeCount          int
+	ReapThrottle                   int64
+	AgeReapThrottle                int64
+	ReapAfter                      float64
+	ReapTainted                    []string
+	ReconsiderUnreapableAfter      float64
+	DrainTimeoutSeconds            int64
+	IgnoreFailure                  bool
+	NodeHealthcheckTimeoutSeconds  int64
+	NodeHealthcheckIntervalSeconds int64
+	PromPushgateway                string
+	ClusterID                      string
+	LocksTableName                 string
 }
 
 // ReaperContext holds the context of the node-reaper and target cluster
@@ -72,31 +79,36 @@ type ReaperContext struct {
 	KubernetesClient     kubernetes.Interface
 	KubernetesConfigPath string
 	// validated arguments
-	ReaperConfigFilePath         string
-	EC2Region                    string
-	KubectlLocalPath             string
-	ReapUnjoinedKey              string
-	ReapUnjoinedValue            string
-	DryRun                       bool
-	SoftReap                     bool
-	ReapUnknown                  bool
-	ReapUnready                  bool
-	ReapGhost                    bool
-	ReapUnjoined                 bool
-	ReapFlappy                   bool
-	AsgValidation                bool
-	ReapOld                      bool
-	ReapThrottle                 int64
-	AgeReapThrottle              int64
-	ReapOldThresholdMinutes      int32
-	ReapUnjoinedThresholdMinutes int32
-	FlapCount                    int32
-	MaxKill                      int
-	TimeToReap                   float64
-	ReapTainted                  []v1.Taint
-	ReconsiderUnreapableAfter    float64
-	DrainTimeoutSeconds          int64
-	IgnoreFailure                bool
+	ReaperConfigFilePath           string
+	EC2Region                      string
+	KubectlLocalPath               string
+	ReapUnjoinedKey                string
+	ReapUnjoinedValue              string
+	DryRun                         bool
+	SoftReap                       bool
+	ReapUnknown                    bool
+	ReapUnready                    bool
+	ReapGhost                      bool
+	ReapUnjoined                   bool
+	ReapFlappy                     bool
+	AsgValidation                  bool
+	ReapOld                        bool
+	ReapThrottle                   int64
+	AgeReapThrottle                int64
+	ReapOldThresholdMinutes        int32
+	ReapUnjoinedThresholdMinutes   int32
+	FlapCount                      int32
+	MaxKill                        int
+	ControlPlaneNodeCount          int
+	TimeToReap                     float64
+	ReapTainted                    []v1.Taint
+	ReconsiderUnreapableAfter      float64
+	DrainTimeoutSeconds            int64
+	NodeHealthcheckTimeoutSeconds  int64
+	NodeHealthcheckIntervalSeconds int64
+	IgnoreFailure                  bool
+	ClusterID                      string
+	LocksTableName                 string
 	// runtime
 	UnreadyNodes              []v1.Node
 	AllNodes                  []v1.Node
@@ -130,6 +142,20 @@ type ReapableInstance struct {
 	NodeName           string
 	InstanceID         string
 	RequiresValidation bool
+}
+
+type LockRecord struct {
+	LockType   string
+	ClusterID  string
+	NodeName   string
+	InstanceID string
+	CreatedAt  string
+	tableName  string
+	locked     bool
+}
+
+func (l *LockRecord) Locked() bool {
+	return l.locked
 }
 
 // AgeSorter sorts age-reapable nodes by their AgeMinutes
@@ -188,4 +214,8 @@ func (ctx *ReaperContext) exposeMetric(node, instance, reason, metric string, va
 	}
 	log.Infof("metric push: Metric<value: %f, name: %s, instance: %s, node: %s>", value, metric, instance, node)
 	return nil
+}
+
+func (ctx *ReaperContext) shouldLock() bool {
+	return ctx.LocksTableName != ""
 }

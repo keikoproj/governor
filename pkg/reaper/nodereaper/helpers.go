@@ -25,14 +25,32 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+)
+
+const (
+	controlPlaneType = "control-plane"
+)
+
+type NodeSelector string
+
+const (
+	nodeSelectorAll          NodeSelector = ""
+	nodeSelectorNode         NodeSelector = "node-role.kubernetes.io/node="
+	nodeSelectorControlPlane NodeSelector = "node-role.kubernetes.io/control-plane="
+	controlPlaneNodeLabel    string       = "node-role.kubernetes.io/control-plane"
+	lockTableClusterIDKey                 = "ClusterID"
 )
 
 func parseTaint(t string) (v1.Taint, bool, error) {
@@ -209,6 +227,123 @@ func (ctx *ReaperContext) publishEvent(namespace string, event *v1.Event) error 
 	return nil
 }
 
+func (ctx *ReaperContext) obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeName, instanceID, nodeType string) (LockRecord, error) {
+	log.Infof("obtaining lock for a %s node %s (%s)", nodeType, nodeName, instanceID)
+
+	timestamp := time.Now().Format(time.RFC3339)
+
+	lock := LockRecord{
+		LockType:   nodeType,
+		ClusterID:  ctx.ClusterID,
+		NodeName:   nodeName,
+		InstanceID: instanceID,
+		CreatedAt:  timestamp,
+		tableName:  ctx.LocksTableName,
+	}
+
+	err := lock.obtainLock(ddbAPI)
+	return lock, err
+}
+
+func (l *LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
+	serializedLock, err := dynamodbattribute.MarshalMap(l)
+	if err != nil {
+		return err
+	}
+	input := &dynamodb.PutItemInput{
+		Item:                serializedLock,
+		TableName:           aws.String(l.tableName),
+		ConditionExpression: aws.String("attribute_not_exists(LockType)"),
+	}
+
+	_, err = ddbAPI.PutItem(input)
+	if err != nil {
+		log.Infof("failed to obtain lock for a %s node %s (%s): %s", controlPlaneType, l.NodeName, l.InstanceID, err.Error())
+		return err
+	}
+
+	l.locked = true
+
+	log.Infof("successfully obtained lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
+
+	return err
+}
+
+func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, lock *LockRecord) {
+	if aerr, ok := err.(awserr.Error); ok {
+		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			// check if we need to do lock cleanup here
+
+			result, err := ddbAPI.GetItem(&dynamodb.GetItemInput{
+				ProjectionExpression: aws.String(fmt.Sprintf("LockType,InstanceID,%s", lockTableClusterIDKey)),
+				Key: map[string]*dynamodb.AttributeValue{
+					"LockType": {
+						S: aws.String(controlPlaneType),
+					},
+				},
+				TableName: aws.String(ctx.LocksTableName),
+			})
+
+			if err != nil || result.Item == nil {
+				// don't care, skip this node then
+				log.Errorf("failed to get lock record for cluster %s: %s", ctx.ClusterID, err)
+				return
+			}
+
+			item := LockRecord{
+				tableName: ctx.LocksTableName,
+			}
+
+			err = dynamodbattribute.UnmarshalMap(result.Item, &item)
+			if err != nil {
+				log.Errorf("failed to unmarshal lock record for cluster %s: %s", ctx.ClusterID, err)
+				return
+			}
+
+			if item.ClusterID == ctx.ClusterID {
+				// this lock belongs to this cluster and should have been released
+				if err := item.releaseLock(ddbAPI); err != nil {
+					log.Errorf("failed to clean up a leftover lock for cluster %s: %s", ctx.ClusterID, err)
+				}
+			} else {
+				log.Infof("another master roll is in progress, skipping node %s (%s)", lock.NodeName, lock.InstanceID)
+			}
+		} else {
+			log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", lock.NodeName, lock.InstanceID, aerr.Message())
+		}
+	} else {
+		log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", lock.NodeName, lock.InstanceID, err.Error())
+	}
+}
+
+func (l *LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
+	input := &dynamodb.DeleteItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"LockType": {
+				S: aws.String(controlPlaneType),
+			},
+		},
+		TableName:           aws.String(l.tableName),
+		ConditionExpression: aws.String(fmt.Sprintf("%s = :cid", lockTableClusterIDKey)),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":cid": {
+				S: aws.String(l.ClusterID),
+			},
+		},
+	}
+
+	_, err := ddbAPI.DeleteItem(input)
+	if err != nil {
+		log.Infof("failed to release lock for a %s node %s (%s): %s", controlPlaneType, l.NodeName, l.InstanceID, err.Error())
+		return err
+	}
+
+	l.locked = false
+
+	log.Infof("successfully released lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
+	return nil
+}
+
 func nodeHasActivePods(n *v1.Node, allPods []v1.Pod) bool {
 	nodeName := n.ObjectMeta.Name
 	log.Infof("inspecting pods assigned to %v", nodeName)
@@ -245,7 +380,7 @@ func getNodeAgeMinutes(n *v1.Node) int {
 }
 
 func getNodeRegion(n *v1.Node) string {
-	var regionName  = ""
+	var regionName = ""
 	labels := n.GetLabels()
 	if labels != nil {
 		regionName = labels["topology.kubernetes.io/region"]
@@ -357,7 +492,7 @@ func nodeMeetsReapAfterThreshold(minuteThreshold float64, minutesSinceTransition
 	return false
 }
 
-func isMaster(node string, kubeClient kubernetes.Interface) (bool, error) {
+func isControlPlane(node string, kubeClient kubernetes.Interface) (bool, error) {
 	corev1 := kubeClient.CoreV1()
 	nodeObject, err := corev1.Nodes().Get(node, metav1.GetOptions{})
 	if err != nil {
@@ -365,7 +500,7 @@ func isMaster(node string, kubeClient kubernetes.Interface) (bool, error) {
 		return false, err
 	}
 	labels := nodeObject.ObjectMeta.GetLabels()
-	if labels["kubernetes.io/role"] == "master" {
+	if labels[controlPlaneNodeLabel] == "" {
 		return true, nil
 	}
 	return false, nil
@@ -375,7 +510,7 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	corev1 := kubeClient.CoreV1()
 	masterCount := 0
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{LabelSelector: "kubernetes.io/role=master"})
+	nodeList, err := corev1.Nodes().List(metav1.ListOptions{LabelSelector: string(nodeSelectorControlPlane)})
 	if err != nil {
 		log.Errorf("failed to list master nodes, %v", err)
 		return 0, err
@@ -388,10 +523,43 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
-func allNodesAreReady(kubeClient kubernetes.Interface) (bool, error) {
+func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
+	var controlPlaneCheckError error
+	// Do not release the lock until control plane is healthy
+	controlPlaneHealthCheckStart := time.Now()
+	maxWait := time.Second * time.Duration(ctx.NodeHealthcheckTimeoutSeconds)
+
+	for time.Since(controlPlaneHealthCheckStart) < maxWait {
+		controlPlaneReady, err := allNodesAreReady(ctx.KubernetesClient, selector)
+		if controlPlaneReady {
+			controlPlaneCheckError = nil
+			break
+		}
+		if err != nil {
+			log.Infof("waiting for control plane to become healthy before releasing the lock")
+			controlPlaneCheckError = err
+		}
+
+		if !controlPlaneReady {
+			log.Infof("waiting for control plane to become healthy before releasing the lock")
+		}
+
+		time.Sleep(time.Second * time.Duration(ctx.NodeHealthcheckIntervalSeconds))
+	}
+
+	return controlPlaneCheckError
+}
+
+func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (bool, error) {
 	corev1 := kubeClient.CoreV1()
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{})
+	opts := metav1.ListOptions{}
+
+	if nodeType != nodeSelectorAll {
+		opts.LabelSelector = string(nodeType)
+	}
+
+	nodeList, err := corev1.Nodes().List(opts)
 	if err != nil {
 		log.Errorf("failed to list all nodes, %v", err)
 		return false, err
