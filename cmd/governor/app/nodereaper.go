@@ -58,6 +58,7 @@ func init() {
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.FlapCount, "flap-count", 5, "Only reap instances which have flapped atleast N times over the last hour")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.ReapThrottle, "reap-throttle", 300, "Post terminate wait in seconds for unhealthy nodes")
 	nodeReapCmd.Flags().IntVar(&nodeReaperArgs.MaxKill, "max-kill-nodes", 1, "Kill up to N nodes per job run, considering throttle wait times")
+	nodeReapCmd.Flags().IntVar(&nodeReaperArgs.ControlPlaneNodeCount, "control-plane-node-count", 3, "Expected number of control plane nodes")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.AgeReapThrottle, "reap-old-throttle", 1800, "Post terminate wait in seconds for old nodes")
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapOldThresholdMinutes, "reap-old-threshold-minutes", 43200, "Reap N minute old nodes")
 	nodeReapCmd.Flags().Int32Var(&nodeReaperArgs.ReapUnjoinedThresholdMinutes, "reap-unjoined-threshold-minutes", 15, "Reap N minute old nodes")

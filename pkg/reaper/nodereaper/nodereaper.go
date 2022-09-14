@@ -75,6 +75,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.EC2Region = args.EC2Region
 	ctx.ReapOld = args.ReapOld
 	ctx.MaxKill = args.MaxKill
+	ctx.ControlPlaneNodeCount = args.ControlPlaneNodeCount
 	ctx.ClusterID = args.ClusterID
 
 	log.Infof("AWS Region = %v", ctx.EC2Region)
@@ -518,8 +519,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		}
 		// Must have 3 healthy masters in order to terminate a master node
 		if isMasterNode {
-			// TODO: make configurable
-			if masterCount < 3 {
+			if masterCount < ctx.ControlPlaneNodeCount {
 				log.Infof("%v", masterCount)
 				log.Infof("less than 3 healthy master nodes, skipping %v", instance.NodeName)
 				continue
@@ -661,7 +661,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			if err != nil {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
 				// because the lock affects only master nodes
-				// TODO: alert on long-lived locks and/or failure to clean up
+				// TODO: alert on long-lived locks and/or failure to clean up (maybe emit metric here)
 				tryClearLock(w.DDB, err, ctx.ClusterID, instance.NodeName, instance.InstanceID)
 				continue
 			}
@@ -694,7 +694,6 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 
 			if !ctx.DryRun {
-				// TODO: lock if master
 				log.Infof("reaping unhealthy node %v -> %v", instance.NodeName, instance)
 
 				err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)

@@ -58,6 +58,7 @@ type Args struct {
 	ReapOldThresholdMinutes      int32
 	ReapUnjoinedThresholdMinutes int32
 	MaxKill                      int
+	ControlPlaneNodeCount        int
 	ReapThrottle                 int64
 	AgeReapThrottle              int64
 	ReapAfter                    float64
@@ -95,6 +96,7 @@ type ReaperContext struct {
 	ReapUnjoinedThresholdMinutes int32
 	FlapCount                    int32
 	MaxKill                      int
+	ControlPlaneNodeCount        int
 	TimeToReap                   float64
 	ReapTainted                  []v1.Taint
 	ReconsiderUnreapableAfter    float64
