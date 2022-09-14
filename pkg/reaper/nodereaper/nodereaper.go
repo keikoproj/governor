@@ -577,7 +577,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
 				// because the lock affects only master nodes
 				// TODO: alert on long-lived locks and/or failure to clean up
-				ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
+				ctx.tryClearLock(w.DDB, err, &lock)
 				continue
 			}
 		}
@@ -675,7 +675,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 				// we try to clear the lock is possible, but on failure we skip this node and continue
 				// because the lock affects only control plane nodes
 				// TODO: alert on long-lived locks and/or failure to clean up (maybe emit metric here)
-				ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
+				ctx.tryClearLock(w.DDB, err, &lock)
 				continue
 			}
 		}

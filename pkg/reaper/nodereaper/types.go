@@ -154,7 +154,7 @@ type LockRecord struct {
 	locked     bool
 }
 
-func (l LockRecord) Locked() bool {
+func (l *LockRecord) Locked() bool {
 	return l.locked
 }
 

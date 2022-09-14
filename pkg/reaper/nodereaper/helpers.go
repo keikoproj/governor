@@ -245,7 +245,7 @@ func (ctx *ReaperContext) obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeN
 	return lock, err
 }
 
-func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
+func (l *LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 	serializedLock, err := dynamodbattribute.MarshalMap(l)
 	if err != nil {
 		return err
@@ -270,7 +270,7 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 }
 
 // TODO: should this be (ddbAPI, lock) instead? Or Lock.tryClearLock(ddbAPI)?
-func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, nodeName, instanceID string) {
+func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, lock *LockRecord) {
 	if aerr, ok := err.(awserr.Error); ok {
 		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
 			// check if we need to do lock cleanup here
@@ -307,17 +307,17 @@ func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err err
 					log.Errorf("failed to clean up a leftover lock for cluster %s: %s", ctx.ClusterID, err)
 				}
 			} else {
-				log.Infof("another master roll is in progress, skipping node %s (%s)", nodeName, instanceID)
+				log.Infof("another master roll is in progress, skipping node %s (%s)", lock.NodeName, lock.InstanceID)
 			}
 		} else {
-			log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", nodeName, instanceID, aerr.Message())
+			log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", lock.NodeName, lock.InstanceID, aerr.Message())
 		}
 	} else {
-		log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", nodeName, instanceID, err.Error())
+		log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", lock.NodeName, lock.InstanceID, err.Error())
 	}
 }
 
-func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
+func (l *LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"LockType": {
