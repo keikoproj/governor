@@ -125,7 +125,7 @@ Flags:
       --node-healthcheck-interval          Time (in seconds) to wait between node healthchecks (default 5)
       --node-healthcheck-timeout           Time (in seconds) to wait before node healthcheck timeout (default 1800)
       --cluster-id                         Unique cluster identifier; used for node reaper locks. Only required if --locks-table-name is set. 
-      --locks-table-name                   DynamoDB table name for storing the lock objects (optional)
+      --locks-table-name                   DynamoDB table name for storing the lock objects (default none)
       --reap-after float                   Reaping threshold in minutes (default 10)
       --reap-flappy                        Terminate nodes which have flappy readiness (default true)
       --reap-old                           Terminate nodes older than --reap-old-threshold days
@@ -152,7 +152,7 @@ attribute {
 }
 ```
 
-where `LockType` is the hash key, and `ClusterID` is the range key.
+where `LockType` is the hash key.
 
 #### Example
 

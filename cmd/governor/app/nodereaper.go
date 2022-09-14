@@ -71,5 +71,5 @@ func init() {
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.NodeHealthcheckTimeoutSeconds, "node-healthcheck-timeout", 1800, "Time (in seconds) to wait before node healthcheck timeout")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.IgnoreFailure, "ignore-failure", false, "Keep the failed node as cordoned")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ClusterID, "cluster-id", "", "Unique cluster identifier; used for node reaper locks")
-	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.LocksTableName, "locks-table-name", "governor-locks", "DynamoDB table name for storing the lock objects")
+	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.LocksTableName, "locks-table-name", "", "DynamoDB table name for storing the lock objects (default not set)")
 }
