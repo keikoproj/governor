@@ -233,6 +233,7 @@ func (ctx *ReaperContext) obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeN
 	timestamp := time.Now().Format(time.RFC3339)
 
 	lock := LockRecord{
+		LockType:   nodeType,
 		ClusterID:  ctx.ClusterID,
 		NodeName:   nodeName,
 		InstanceID: instanceID,
@@ -275,7 +276,7 @@ func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err err
 			// check if we need to do lock cleanup here
 
 			result, err := ddbAPI.GetItem(&dynamodb.GetItemInput{
-				ProjectionExpression: aws.String(lockTableClusterIDKey),
+				ProjectionExpression: aws.String(fmt.Sprintf("LockType,InstanceID,%s", lockTableClusterIDKey)),
 				Key: map[string]*dynamodb.AttributeValue{
 					"LockType": {
 						S: aws.String(controlPlaneType),
@@ -290,7 +291,9 @@ func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err err
 				return
 			}
 
-			item := LockRecord{}
+			item := LockRecord{
+				tableName: ctx.LocksTableName,
+			}
 
 			err = dynamodbattribute.UnmarshalMap(result.Item, &item)
 			if err != nil {
@@ -320,12 +323,14 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 			"LockType": {
 				S: aws.String(controlPlaneType),
 			},
-			"InstanceID": {
-				S: aws.String(l.InstanceID),
-			},
 		},
 		TableName:           aws.String(l.tableName),
-		ConditionExpression: aws.String(fmt.Sprintf("%s = %s", lockTableClusterIDKey, l.ClusterID)),
+		ConditionExpression: aws.String("ClusterID = :cid"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":cid": {
+				S: aws.String(l.ClusterID),
+			},
+		},
 	}
 
 	_, err := ddbAPI.DeleteItem(input)

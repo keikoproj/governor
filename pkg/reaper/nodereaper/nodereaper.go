@@ -235,7 +235,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	}
 
 	if args.LocksTableName != "" {
-		if ctx.ClusterID == "" {
+		if args.ClusterID == "" {
 			err := fmt.Errorf("must provide --cluster-id if --locks-table-name is set")
 			return err
 		}
@@ -331,7 +331,7 @@ func Run(args *Args) error {
 		log.Infoln("no unhealthy reapable nodes found")
 	}
 
-	if len(ctx.AgeDrainReapableInstances) != 0 {
+	if true || len(ctx.AgeDrainReapableInstances) != 0 {
 		log.Infoln("starting reap cycle for old nodes")
 		err = ctx.reapOldNodes(awsAuth)
 		if err != nil {
@@ -503,12 +503,27 @@ func (ctx *ReaperContext) deriveReapableNodes() error {
 }
 
 func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
+
+	var lock LockRecord
+	var err error
+
+	// Dry run does not need to bother with locks
+	// and only control plane nodes need one
+	lock, err = ctx.obtainReapLock(w.DDB, "node name", "node id", controlPlaneType)
+	if err != nil {
+		// we try to clear the lock is possible, but on failure we skip this node and continue
+		// because the lock affects only master nodes
+		// TODO: alert on long-lived locks and/or failure to clean up
+		ctx.tryClearLock(w.DDB, err, "node name", "node id")
+	}
+
 	for _, instance := range ctx.AgeDrainReapableInstances {
 		ctx.AgeKillOrder = append(ctx.AgeKillOrder, instance.NodeName)
 	}
 	log.Infof("Kill order: %v", ctx.AgeKillOrder)
 
 	for _, instance := range ctx.AgeDrainReapableInstances {
+
 		if ctx.TerminatedInstances >= ctx.MaxKill {
 			log.Infof("max kill nodes reached, %v/%v nodes have been terminated in current run", ctx.TerminatedInstances, ctx.MaxKill)
 			return nil
@@ -566,20 +581,20 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 			log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
 		}
 
-		var lock LockRecord
-
-		// Dry run does not need to bother with locks
-		// and only master nodes need one
-		if !ctx.DryRun && isControlPlaneNode && ctx.shouldLock() {
-			lock, err = ctx.obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, controlPlaneType)
-			if err != nil {
-				// we try to clear the lock is possible, but on failure we skip this node and continue
-				// because the lock affects only master nodes
-				// TODO: alert on long-lived locks and/or failure to clean up
-				ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
-				continue
-			}
-		}
+		//var lock LockRecord
+		//
+		//// Dry run does not need to bother with locks
+		//// and only master nodes need one
+		//if !ctx.DryRun && isControlPlaneNode && ctx.shouldLock() {
+		//	lock, err = ctx.obtainReapLock(w.DDB, instance.NodeName, instance.InstanceID, controlPlaneType)
+		//	if err != nil {
+		//		// we try to clear the lock is possible, but on failure we skip this node and continue
+		//		// because the lock affects only master nodes
+		//		// TODO: alert on long-lived locks and/or failure to clean up
+		//		ctx.tryClearLock(w.DDB, err, instance.NodeName, instance.InstanceID)
+		//		continue
+		//	}
+		//}
 
 		var controlPlaneCheckError error
 

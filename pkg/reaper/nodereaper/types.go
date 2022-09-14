@@ -145,11 +145,11 @@ type ReapableInstance struct {
 }
 
 type LockRecord struct {
+	LockType   string
 	ClusterID  string
 	NodeName   string
 	InstanceID string
 	CreatedAt  string
-	ExpiresAt  int64
 	tableName  string
 	locked     bool
 }

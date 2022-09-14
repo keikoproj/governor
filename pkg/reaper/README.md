@@ -145,12 +145,14 @@ described in [kops#13686](https://github.com/kubernetes/kops/issues/13686).
 
 The locking mechanism utilizes a DynamoDB table accessible to all instances of `node-reaper`. Expected table attribute is
 
-```json
-{
-    "AttributeName": "LockType",
-    "AttributeType": "S"
+```hcl
+attribute {
+  name = "LockType"
+  type = "S"
 }
 ```
+
+where `LockType` is the hash key, and `ClusterID` is the range key.
 
 #### Example
 
