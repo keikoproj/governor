@@ -22,11 +22,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/pkg/errors"
@@ -559,58 +557,14 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		var lock LockRecord
 
 		// Dry run does not need to bother with locks
+		// and only master nodes need one
 		if !ctx.DryRun && isMasterNode {
 			lock, err = obtainReapLock(w.DDB, ctx.ClusterID, instance.NodeName, instance.InstanceID, "master")
 			if err != nil {
-				if aerr, ok := err.(awserr.Error); ok {
-					if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-						// repeat getting the lock
-						result, err := w.DDB.GetItem(&dynamodb.GetItemInput{
-							ProjectionExpression: aws.String("ClusterID"),
-							Key: map[string]*dynamodb.AttributeValue{
-								"LockType": {
-									S: aws.String(controlPlaneType),
-								},
-							},
-							TableName: aws.String("governor-locks"),
-						})
-
-						if err != nil || result.Item == nil {
-							// don't care, skip this node then
-							// TODO: log error
-							continue
-						}
-
-						item := LockRecord{}
-
-						err = dynamodbattribute.UnmarshalMap(result.Item, &item)
-						if err != nil {
-							panic(fmt.Sprintf("Failed to unmarshal Record, %v", err))
-						}
-
-						if item.ClusterID == ctx.ClusterID {
-							_, err := w.DDB.DeleteItem(&dynamodb.DeleteItemInput{
-								Key: map[string]*dynamodb.AttributeValue{
-									"LockType": {
-										S: aws.String(controlPlaneType),
-									},
-								},
-								TableName: aws.String("governor-locks"),
-							})
-							if err != nil {
-								log.Errorf("got error calling DeleteItem: %s", err)
-								return err
-							}
-						}
-
-						log.Infof("another master roll is in progress, skipping node %s (%s)", instance.NodeName, instance.InstanceID)
-					} else {
-						log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, aerr.Message())
-					}
-				} else {
-					log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", instance.NodeName, instance.InstanceID, err.Error())
-				}
-
+				// we try to clear the lock is possible, but on failure we skip this node and continue
+				// because the lock affects only master nodes
+				// TODO: alert on long-lived locks and/or failure to clean up
+				tryClearLock(w.DDB, err, ctx.ClusterID, instance.NodeName, instance.InstanceID)
 				continue
 			}
 		}
@@ -620,7 +574,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		// wrap into a func to make sure defer works as expected
 		err = func() error {
 			defer func() {
-				if controlPlaneCheckError == nil {
+				if lock.Locked() && controlPlaneCheckError == nil {
 					// eat the error, the func will log if there's one
 					_ = lock.releaseLock(w.DDB)
 				}
@@ -653,32 +607,11 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
 			}
 
-			// Do not release the lock until control plane is healthy
-			controlPlaneHealthCheckStart := time.Now()
-			// TODO: configurable
-			maxWait := time.Minute * 30
-
-			for time.Since(controlPlaneHealthCheckStart) < maxWait {
-				controlPlaneReady, err := allNodesAreReady(ctx.KubernetesClient, nodeSelectorControlPlane)
-				if controlPlaneReady {
-					controlPlaneCheckError = nil
-					break
-				}
-				if err != nil {
-					log.Infof("waiting for control plane to become healthy before releasing the lock")
-					controlPlaneCheckError = err
-				}
-
-				if !controlPlaneReady {
-					log.Infof("waiting for control plane to become healthy before releasing the lock")
-				}
-
-				// TODO: configurable
-				time.Sleep(time.Second * 5)
-			}
+			controlPlaneCheckError = waitForNodesReady(ctx.KubernetesClient)
 
 			// if the control plane did not become healthy in time,
 			// the next loop will fail the ready check, so just log the error here
+			// the deferred lock release will keep the lock in this case
 			if controlPlaneCheckError != nil {
 				log.Warnf("error while checking control plane health: %s", controlPlaneCheckError.Error())
 			}
@@ -716,40 +649,75 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 		}
 
-		// Drain if drainable
-		if _, drainable := ctx.DrainableInstances[instance.NodeName]; drainable {
-			if ctx.DryRun {
-				log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
-			}
-			err := ctx.drainNode(instance.NodeName, ctx.DryRun)
-			if err != nil {
-				ctx.exposeMetric(instance.NodeName, instance.InstanceID, drainFailedMetric, NodeReaperResultMetricName, 1)
-				return err
-			}
-		}
-
-		err := dumpSpec(instance.NodeName, ctx.KubernetesClient)
+		isMasterNode, err := isMaster(instance.NodeName, ctx.KubernetesClient)
 		if err != nil {
-			log.Warnf("failed to dump spec for node %v, %v", instance.NodeName, err)
+			return err
 		}
 
-		if !ctx.DryRun {
-			// TODO: lock if master
-			log.Infof("reaping unhealthy node %v -> %v", instance.NodeName, instance)
+		var lock LockRecord
 
-			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
+		if !ctx.DryRun && isMasterNode {
+			lock, err = obtainReapLock(w.DDB, ctx.ClusterID, instance.NodeName, instance.InstanceID, "master")
 			if err != nil {
-				return err
+				// we try to clear the lock is possible, but on failure we skip this node and continue
+				// because the lock affects only master nodes
+				// TODO: alert on long-lived locks and/or failure to clean up
+				tryClearLock(w.DDB, err, ctx.ClusterID, instance.NodeName, instance.InstanceID)
+				continue
+			}
+		}
+
+		// wrap into a func to make sure defer works as expected
+		err = func() error {
+			defer func() {
+				if lock.Locked() {
+					// eat the error, the func will log if there's one
+					_ = lock.releaseLock(w.DDB)
+				}
+			}()
+
+			// Drain if drainable
+			if _, drainable := ctx.DrainableInstances[instance.NodeName]; drainable {
+				if ctx.DryRun {
+					log.Warnf("dry run is on, '%v' will not be cordon/drained", instance.NodeName)
+				}
+				err := ctx.drainNode(instance.NodeName, ctx.DryRun)
+				if err != nil {
+					ctx.exposeMetric(instance.NodeName, instance.InstanceID, drainFailedMetric, NodeReaperResultMetricName, 1)
+					return err
+				}
 			}
 
-			// Throttle deletion
-			ctx.TerminatedInstances++
-			ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonUnhealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+			err = dumpSpec(instance.NodeName, ctx.KubernetesClient)
+			if err != nil {
+				log.Warnf("failed to dump spec for node %v, %v", instance.NodeName, err)
+			}
 
-			log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
-			time.Sleep(time.Second * time.Duration(ctx.ReapThrottle))
-		} else {
-			log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
+			if !ctx.DryRun {
+				// TODO: lock if master
+				log.Infof("reaping unhealthy node %v -> %v", instance.NodeName, instance)
+
+				err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
+				if err != nil {
+					return err
+				}
+
+				// Throttle deletion
+				ctx.TerminatedInstances++
+				ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonUnhealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
+
+				log.Infof("starting deletion throttle wait -> %vs", ctx.ReapThrottle)
+				time.Sleep(time.Second * time.Duration(ctx.ReapThrottle))
+			} else {
+				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
+			}
+
+			return nil
+		}()
+
+		// only return on error, otherwise continue looping
+		if err != nil {
+			return err
 		}
 	}
 	log.Infof("reap cycle completed, terminated %v instances", ctx.TerminatedInstances)

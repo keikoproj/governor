@@ -142,6 +142,11 @@ type LockRecord struct {
 	InstanceID string
 	CreatedAt  string
 	ExpiresAt  int64
+	locked     bool
+}
+
+func (l LockRecord) Locked() bool {
+	return l.locked
 }
 
 // AgeSorter sorts age-reapable nodes by their AgeMinutes

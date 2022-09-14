@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -254,12 +255,60 @@ func (l LockRecord) obtainLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 
 	_, err = ddbAPI.PutItem(input)
 	if err != nil {
+		log.Infof("failed to obtain lock for a %s node %s (%s): %s", controlPlaneType, l.NodeName, l.InstanceID, err.Error())
 		return err
 	}
+
+	l.locked = true
 
 	log.Infof("successfully obtained lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
 
 	return err
+}
+
+// TODO: should this be (ddbAPI, lock) instead? Or Lock.tryClearLock(ddbAPI)?
+func tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err error, clusterID, nodeName, instanceID string) {
+	if aerr, ok := err.(awserr.Error); ok {
+		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			// check if we need to do lock cleanup here
+			result, err := ddbAPI.GetItem(&dynamodb.GetItemInput{
+				ProjectionExpression: aws.String("ClusterID"),
+				Key: map[string]*dynamodb.AttributeValue{
+					"LockType": {
+						S: aws.String(controlPlaneType),
+					},
+				},
+				TableName: aws.String("governor-locks"),
+			})
+
+			if err != nil || result.Item == nil {
+				// don't care, skip this node then
+				log.Errorf("failed to get lock record for cluster %s: %s", clusterID, err)
+				return
+			}
+
+			item := LockRecord{}
+
+			err = dynamodbattribute.UnmarshalMap(result.Item, &item)
+			if err != nil {
+				log.Errorf("failed to unmarshal lock record for cluster %s: %s", clusterID, err)
+				return
+			}
+
+			// this lock belongs to this cluster and should have been released
+			if item.ClusterID == clusterID {
+				if err := item.releaseLock(ddbAPI); err != nil {
+					log.Errorf("failed to clean up a leftover lock for cluster %s: %s", clusterID, err)
+				}
+			} else {
+				log.Infof("another master roll is in progress, skipping node %s (%s)", nodeName, instanceID)
+			}
+		} else {
+			log.Infof("AWS error while attempting to obtain lock for %s (%s), skipping: %s", nodeName, instanceID, aerr.Message())
+		}
+	} else {
+		log.Infof("unknown error while attempting to obtain lock for %s (%s), skipping: %s", nodeName, instanceID, err.Error())
+	}
 }
 
 func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
@@ -273,15 +322,19 @@ func (l LockRecord) releaseLock(ddbAPI dynamodbiface.DynamoDBAPI) error {
 			},
 		},
 		// TODO: make configurable
-		TableName: aws.String("governor-locks"),
+		TableName:           aws.String("governor-locks"),
+		ConditionExpression: aws.String(fmt.Sprintf("ClusterID = %s", l.ClusterID)),
 	}
 
 	_, err := ddbAPI.DeleteItem(input)
 	if err != nil {
+		log.Infof("failed to release lock for a %s node %s (%s): %s", controlPlaneType, l.NodeName, l.InstanceID, err.Error())
 		return err
 	}
 
-	log.Infof("failed to release lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
+	l.locked = false
+
+	log.Infof("successfully released lock for a %s node %s (%s)", controlPlaneType, l.NodeName, l.InstanceID)
 	return nil
 }
 
@@ -451,7 +504,7 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	corev1 := kubeClient.CoreV1()
 	masterCount := 0
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{LabelSelector: "kubernetes.io/role=master"})
+	nodeList, err := corev1.Nodes().List(metav1.ListOptions{LabelSelector: string(nodeSelectorControlPlane)})
 	if err != nil {
 		log.Errorf("failed to list master nodes, %v", err)
 		return 0, err
@@ -464,6 +517,35 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
+func waitForNodesReady(kubeClient kubernetes.Interface) error {
+	var controlPlaneCheckError error
+	// Do not release the lock until control plane is healthy
+	controlPlaneHealthCheckStart := time.Now()
+	// TODO: configurable
+	maxWait := time.Minute * 30
+
+	for time.Since(controlPlaneHealthCheckStart) < maxWait {
+		controlPlaneReady, err := allNodesAreReady(kubeClient, nodeSelectorControlPlane)
+		if controlPlaneReady {
+			controlPlaneCheckError = nil
+			break
+		}
+		if err != nil {
+			log.Infof("waiting for control plane to become healthy before releasing the lock")
+			controlPlaneCheckError = err
+		}
+
+		if !controlPlaneReady {
+			log.Infof("waiting for control plane to become healthy before releasing the lock")
+		}
+
+		// TODO: configurable
+		time.Sleep(time.Second * 5)
+	}
+
+	return controlPlaneCheckError
+}
+
 func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (bool, error) {
 	corev1 := kubeClient.CoreV1()
 
@@ -473,7 +555,7 @@ func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (b
 		opts.LabelSelector = string(nodeType)
 	}
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{})
+	nodeList, err := corev1.Nodes().List(opts)
 	if err != nil {
 		log.Errorf("failed to list all nodes, %v", err)
 		return false, err
