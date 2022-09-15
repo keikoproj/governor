@@ -230,8 +230,10 @@ func createNodeLabels(node FakeNode, ctx *ReaperContext) map[string]string {
 	nodeLabels := make(map[string]string)
 	if node.isMaster {
 		nodeLabels["kubernetes.io/role"] = "master"
+		nodeLabels[controlPlaneNodeLabel] = ""
 	} else {
 		nodeLabels["kubernetes.io/role"] = "node"
+		nodeLabels[workerNodeLabel] = ""
 	}
 
 	for key, value := range node.nodeLabels {
@@ -1335,13 +1337,13 @@ func TestIgnoreFailure(t *testing.T) {
 		},
 		Nodes: []FakeNode{
 			{
-				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
-				state:    "NotReady",
+				nodeName:   "ip-10-10-10-10.us-west-2.compute.local",
+				state:      "NotReady",
 				ageMinutes: 43200,
 			},
 			{
-				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
-				state: 		"Unknown",
+				nodeName:   "ip-10-10-10-11.us-west-2.compute.local",
+				state:      "Unknown",
 				ageMinutes: 43200,
 			},
 			{
@@ -1363,11 +1365,11 @@ func TestIgnoreFailure(t *testing.T) {
 				kind:   "Node",
 			},
 		},
-		FakeReaper:				reaper,
-		ExpectedUnready:    	3,
-		ExpectedOldReapable:	3,
-		ExpectedDrainable:  	0,
-		ExpectedDrained:    	0,
+		FakeReaper:          reaper,
+		ExpectedUnready:     3,
+		ExpectedOldReapable: 3,
+		ExpectedDrainable:   0,
+		ExpectedDrained:     0,
 	}
 	testCase.Run(t, false)
 }
@@ -1726,7 +1728,6 @@ func TestRegionDetection(t *testing.T) {
 		t.Fatalf("expected Region: %v, got: %v", expectedRegion, providerRegion)
 	}
 }
-
 
 func TestSkipLabelReaper(t *testing.T) {
 	reaper := newFakeReaperContext()

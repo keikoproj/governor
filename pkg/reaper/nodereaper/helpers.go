@@ -50,6 +50,7 @@ const (
 	nodeSelectorNode         NodeSelector = "node-role.kubernetes.io/node="
 	nodeSelectorControlPlane NodeSelector = "node-role.kubernetes.io/control-plane="
 	controlPlaneNodeLabel    string       = "node-role.kubernetes.io/control-plane"
+	workerNodeLabel          string       = "node-role.kubernetes.io/node"
 	lockTableClusterIDKey                 = "ClusterID"
 )
 
@@ -527,7 +528,7 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
-func (ctx *ReaperContext) waitForNodesReady() error {
+func (ctx *ReaperContext) waitForControlPlaneReady() error {
 	var controlPlaneCheckError error
 	// Do not release the lock until control plane is healthy
 	controlPlaneHealthCheckStart := time.Now()
@@ -606,6 +607,7 @@ func (ctx *ReaperContext) controlPlaneReady() (bool, error) {
 }
 
 func (ctx *ReaperContext) deleteKubernetesNode(nodeName string) error {
+	log.Infof("deleting node %s from Kubernetes", nodeName)
 	return ctx.KubernetesClient.CoreV1().Nodes().Delete(nodeName, &metav1.DeleteOptions{})
 }
 
