@@ -504,7 +504,7 @@ func isControlPlane(node string, kubeClient kubernetes.Interface) (bool, error) 
 		return false, err
 	}
 	labels := nodeObject.ObjectMeta.GetLabels()
-	if labels[controlPlaneNodeLabel] == "" {
+	if _, ok := labels[controlPlaneNodeLabel]; ok {
 		return true, nil
 	}
 	return false, nil
