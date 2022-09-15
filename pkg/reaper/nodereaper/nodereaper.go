@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -30,6 +31,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -84,6 +86,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	log.Infof("ASG Validation = %t", ctx.AsgValidation)
 	log.Infof("Post Reap Throttle = %v seconds", ctx.ReapThrottle)
 
+	reapTaintedLog := []string{}
 	for _, t := range args.ReapTainted {
 		var taint v1.Taint
 		var ok bool
@@ -94,6 +97,11 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 		}
 
 		ctx.ReapTainted = append(ctx.ReapTainted, taint)
+		reapTaintedLog = append(reapTaintedLog, taint.ToString())
+	}
+
+	if len(ctx.ReapTainted) > 0 {
+		log.Infof("Reap Tainted = %s", strings.Join(reapTaintedLog, ","))
 	}
 
 	if ctx.MaxKill < 1 {
@@ -242,6 +250,9 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 
 		ctx.ClusterID = args.ClusterID
 		ctx.LocksTableName = args.LocksTableName
+
+		log.Infof("Cluster ID = %s", ctx.ClusterID)
+		log.Infof("Locks Table Name = %s", ctx.LocksTableName)
 	}
 
 	return nil
@@ -534,7 +545,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		if isControlPlaneNode {
 			if masterCount < ctx.ControlPlaneNodeCount {
 				log.Infof("%v", masterCount)
-				log.Infof("less than 3 healthy master nodes, skipping %v", instance.NodeName)
+				log.Infof("less than %d healthy master nodes, skipping %v", ctx.ControlPlaneNodeCount, instance.NodeName)
 				continue
 			}
 		}
@@ -550,7 +561,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				continue
 			}
 
-			nodesReady, err := allNodesAreReady(ctx.KubernetesClient, nodeSelectorAll)
+			nodesReady, err := ctx.allNodesAreReady()
 			if err != nil {
 				return err
 			}
@@ -610,6 +621,12 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 					return err
 				}
 
+				// termination call was successful, so we can try to delete the node from the API
+				err = ctx.deleteKubernetesNode(instance.NodeName)
+				if err != nil {
+					log.Warnf("failed to delete the node %v: %v", instance.NodeName, err)
+				}
+
 				// Throttle deletion
 				ctx.TerminatedInstances++
 				ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
@@ -620,7 +637,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
 			}
 
-			controlPlaneCheckError = ctx.waitForNodesReady(nodeSelectorControlPlane)
+			controlPlaneCheckError = ctx.waitForControlPlaneReady()
 
 			// if the control plane did not become healthy in time,
 			// the next loop will fail the ready check, so just log the error here
@@ -664,7 +681,11 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 
 		isControlPlaneNode, err := isControlPlane(instance.NodeName, ctx.KubernetesClient)
 		if err != nil {
-			return err
+			if k8serr, ok := err.(errors2.APIStatus); ok && k8serr.Status().Reason == metav1.StatusReasonNotFound {
+				// probably unjoined node, ignore
+			} else {
+				return err
+			}
 		}
 
 		var lock LockRecord
@@ -712,6 +733,12 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 				err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
 				if err != nil {
 					return err
+				}
+
+				// termination call was successful, so we can try to delete the node from the API
+				err = ctx.deleteKubernetesNode(instance.NodeName)
+				if err != nil {
+					log.Warnf("failed to delete the node %v: %v", instance.NodeName, err)
 				}
 
 				// Throttle deletion

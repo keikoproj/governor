@@ -50,6 +50,7 @@ const (
 	nodeSelectorNode         NodeSelector = "node-role.kubernetes.io/node="
 	nodeSelectorControlPlane NodeSelector = "node-role.kubernetes.io/control-plane="
 	controlPlaneNodeLabel    string       = "node-role.kubernetes.io/control-plane"
+	workerNodeLabel          string       = "node-role.kubernetes.io/node"
 	lockTableClusterIDKey                 = "ClusterID"
 )
 
@@ -443,6 +444,10 @@ func nodeStateIsUnknown(n *v1.Node) bool {
 	return false
 }
 
+func nodeUnschedulable(n *v1.Node) bool {
+	return n.Spec.Unschedulable
+}
+
 func getInstanceTagValue(w ec2iface.EC2API, instance string, key string) (string, error) {
 	filters := []*ec2.Filter{
 		{Name: aws.String("resource-id"), Values: []*string{&instance}},
@@ -500,7 +505,7 @@ func isControlPlane(node string, kubeClient kubernetes.Interface) (bool, error) 
 		return false, err
 	}
 	labels := nodeObject.ObjectMeta.GetLabels()
-	if labels[controlPlaneNodeLabel] == "" {
+	if _, ok := labels[controlPlaneNodeLabel]; ok {
 		return true, nil
 	}
 	return false, nil
@@ -523,20 +528,23 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
-func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
+func (ctx *ReaperContext) waitForControlPlaneReady() error {
 	var controlPlaneCheckError error
 	// Do not release the lock until control plane is healthy
 	controlPlaneHealthCheckStart := time.Now()
 	maxWait := time.Second * time.Duration(ctx.NodeHealthcheckTimeoutSeconds)
 
 	for time.Since(controlPlaneHealthCheckStart) < maxWait {
-		controlPlaneReady, err := allNodesAreReady(ctx.KubernetesClient, selector)
+		log.Infof("waiting for control plane to become healthy before releasing the lock")
+
+		controlPlaneReady, err := ctx.controlPlaneReady()
 		if controlPlaneReady {
+			log.Infof("control plane is healthy")
 			controlPlaneCheckError = nil
 			break
 		}
 		if err != nil {
-			log.Infof("waiting for control plane to become healthy before releasing the lock")
+			log.Infof("error while checking control plane health: %s", err)
 			controlPlaneCheckError = err
 		}
 
@@ -550,8 +558,8 @@ func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
 	return controlPlaneCheckError
 }
 
-func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (bool, error) {
-	corev1 := kubeClient.CoreV1()
+func (ctx *ReaperContext) getNodes(nodeType NodeSelector) (*v1.NodeList, error) {
+	corev1 := ctx.KubernetesClient.CoreV1()
 
 	opts := metav1.ListOptions{}
 
@@ -559,7 +567,11 @@ func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (b
 		opts.LabelSelector = string(nodeType)
 	}
 
-	nodeList, err := corev1.Nodes().List(opts)
+	return corev1.Nodes().List(opts)
+}
+
+func (ctx *ReaperContext) allNodesAreReady() (bool, error) {
+	nodeList, err := ctx.getNodes(nodeSelectorAll)
 	if err != nil {
 		log.Errorf("failed to list all nodes, %v", err)
 		return false, err
@@ -571,6 +583,32 @@ func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (b
 		}
 	}
 	return true, nil
+}
+
+func (ctx *ReaperContext) controlPlaneReady() (bool, error) {
+	nodeList, err := ctx.getNodes(nodeSelectorControlPlane)
+	if err != nil {
+		log.Errorf("failed to list all nodes, %v", err)
+		return false, err
+	}
+
+	if len(nodeList.Items) < ctx.ControlPlaneNodeCount {
+		log.Infof("control plane node count below expected")
+		return false, nil
+	}
+
+	for _, node := range nodeList.Items {
+		if nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node) || nodeUnschedulable(&node) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (ctx *ReaperContext) deleteKubernetesNode(nodeName string) error {
+	log.Infof("deleting node %s from Kubernetes", nodeName)
+	return ctx.KubernetesClient.CoreV1().Nodes().Delete(nodeName, &metav1.DeleteOptions{})
 }
 
 func isTerminated(instances []*ec2.Instance, instanceID string) bool {
