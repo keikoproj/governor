@@ -527,20 +527,23 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	return masterCount, nil
 }
 
-func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
+func (ctx *ReaperContext) waitForNodesReady() error {
 	var controlPlaneCheckError error
 	// Do not release the lock until control plane is healthy
 	controlPlaneHealthCheckStart := time.Now()
 	maxWait := time.Second * time.Duration(ctx.NodeHealthcheckTimeoutSeconds)
 
 	for time.Since(controlPlaneHealthCheckStart) < maxWait {
+		log.Infof("waiting for control plane to become healthy before releasing the lock")
+
 		controlPlaneReady, err := ctx.controlPlaneReady()
 		if controlPlaneReady {
+			log.Infof("control plane is healthy")
 			controlPlaneCheckError = nil
 			break
 		}
 		if err != nil {
-			log.Infof("waiting for control plane to become healthy before releasing the lock")
+			log.Infof("error while checking control plane health: %s", err)
 			controlPlaneCheckError = err
 		}
 
@@ -600,6 +603,10 @@ func (ctx *ReaperContext) controlPlaneReady() (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (ctx *ReaperContext) deleteKubernetesNode(nodeName string) error {
+	return ctx.KubernetesClient.CoreV1().Nodes().Delete(nodeName, &metav1.DeleteOptions{})
 }
 
 func isTerminated(instances []*ec2.Instance, instanceID string) bool {

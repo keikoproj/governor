@@ -613,6 +613,12 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 					return err
 				}
 
+				// termination call was successful, so we can try to delete the node from the API
+				err = ctx.deleteKubernetesNode(instance.NodeName)
+				if err != nil {
+					log.Warnf("failed to delete the node %v: %v", instance.NodeName, err)
+				}
+
 				// Throttle deletion
 				ctx.TerminatedInstances++
 				ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonHealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
@@ -623,7 +629,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
 			}
 
-			controlPlaneCheckError = ctx.waitForNodesReady(nodeSelectorControlPlane)
+			controlPlaneCheckError = ctx.waitForNodesReady()
 
 			// if the control plane did not become healthy in time,
 			// the next loop will fail the ready check, so just log the error here
