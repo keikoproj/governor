@@ -96,6 +96,8 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 		ctx.ReapTainted = append(ctx.ReapTainted, taint)
 	}
 
+	log.Infof("Reap Tainted = %q", ctx.ReapTainted)
+
 	if ctx.MaxKill < 1 {
 		err := fmt.Errorf("--max-kill-nodes must be set to a number greater than or equal to 1")
 		log.Errorln(err)
