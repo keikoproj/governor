@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -84,6 +85,7 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	log.Infof("ASG Validation = %t", ctx.AsgValidation)
 	log.Infof("Post Reap Throttle = %v seconds", ctx.ReapThrottle)
 
+	reapTaintedLog := []string{}
 	for _, t := range args.ReapTainted {
 		var taint v1.Taint
 		var ok bool
@@ -94,9 +96,12 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 		}
 
 		ctx.ReapTainted = append(ctx.ReapTainted, taint)
+		reapTaintedLog = append(reapTaintedLog, taint.ToString())
 	}
 
-	log.Infof("Reap Tainted = %q", ctx.ReapTainted)
+	if len(ctx.ReapTainted) > 0 {
+		log.Infof("Reap Tainted = %s", strings.Join(reapTaintedLog, ","))
+	}
 
 	if ctx.MaxKill < 1 {
 		err := fmt.Errorf("--max-kill-nodes must be set to a number greater than or equal to 1")
