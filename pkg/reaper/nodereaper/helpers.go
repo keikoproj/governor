@@ -276,7 +276,6 @@ func (ctx *ReaperContext) tryClearLock(ddbAPI dynamodbiface.DynamoDBAPI, err err
 			// check if we need to do lock cleanup here
 
 			result, err := ddbAPI.GetItem(&dynamodb.GetItemInput{
-				ProjectionExpression: aws.String(fmt.Sprintf("LockType,InstanceID,%s", lockTableClusterIDKey)),
 				Key: map[string]*dynamodb.AttributeValue{
 					"LockType": {
 						S: aws.String(controlPlaneType),
