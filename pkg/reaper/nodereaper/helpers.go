@@ -443,6 +443,10 @@ func nodeStateIsUnknown(n *v1.Node) bool {
 	return false
 }
 
+func nodeUnschedulable(n *v1.Node) bool {
+	return n.Spec.Unschedulable
+}
+
 func getInstanceTagValue(w ec2iface.EC2API, instance string, key string) (string, error) {
 	filters := []*ec2.Filter{
 		{Name: aws.String("resource-id"), Values: []*string{&instance}},
@@ -530,7 +534,7 @@ func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
 	maxWait := time.Second * time.Duration(ctx.NodeHealthcheckTimeoutSeconds)
 
 	for time.Since(controlPlaneHealthCheckStart) < maxWait {
-		controlPlaneReady, err := allNodesAreReady(ctx.KubernetesClient, selector)
+		controlPlaneReady, err := ctx.controlPlaneReady()
 		if controlPlaneReady {
 			controlPlaneCheckError = nil
 			break
@@ -550,8 +554,8 @@ func (ctx *ReaperContext) waitForNodesReady(selector NodeSelector) error {
 	return controlPlaneCheckError
 }
 
-func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (bool, error) {
-	corev1 := kubeClient.CoreV1()
+func (ctx *ReaperContext) getNodes(nodeType NodeSelector) (*v1.NodeList, error) {
+	corev1 := ctx.KubernetesClient.CoreV1()
 
 	opts := metav1.ListOptions{}
 
@@ -559,7 +563,11 @@ func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (b
 		opts.LabelSelector = string(nodeType)
 	}
 
-	nodeList, err := corev1.Nodes().List(opts)
+	return corev1.Nodes().List(opts)
+}
+
+func (ctx *ReaperContext) allNodesAreReady() (bool, error) {
+	nodeList, err := ctx.getNodes(nodeSelectorAll)
 	if err != nil {
 		log.Errorf("failed to list all nodes, %v", err)
 		return false, err
@@ -570,6 +578,27 @@ func allNodesAreReady(kubeClient kubernetes.Interface, nodeType NodeSelector) (b
 			return false, nil
 		}
 	}
+	return true, nil
+}
+
+func (ctx *ReaperContext) controlPlaneReady() (bool, error) {
+	nodeList, err := ctx.getNodes(nodeSelectorControlPlane)
+	if err != nil {
+		log.Errorf("failed to list all nodes, %v", err)
+		return false, err
+	}
+
+	if len(nodeList.Items) < ctx.ControlPlaneNodeCount {
+		log.Infof("control plane node count below expected")
+		return false, nil
+	}
+
+	for _, node := range nodeList.Items {
+		if nodeStateIsNotReady(&node) || nodeStateIsUnknown(&node) || nodeUnschedulable(&node) {
+			return false, nil
+		}
+	}
+
 	return true, nil
 }
 

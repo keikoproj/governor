@@ -242,6 +242,9 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 
 		ctx.ClusterID = args.ClusterID
 		ctx.LocksTableName = args.LocksTableName
+
+		log.Infof("Cluster ID = %s", ctx.ClusterID)
+		log.Infof("Locks Table Name = %s", ctx.LocksTableName)
 	}
 
 	return nil
@@ -534,7 +537,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 		if isControlPlaneNode {
 			if masterCount < ctx.ControlPlaneNodeCount {
 				log.Infof("%v", masterCount)
-				log.Infof("less than 3 healthy master nodes, skipping %v", instance.NodeName)
+				log.Infof("less than %d healthy master nodes, skipping %v", ctx.ControlPlaneNodeCount, instance.NodeName)
 				continue
 			}
 		}
@@ -550,7 +553,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 				continue
 			}
 
-			nodesReady, err := allNodesAreReady(ctx.KubernetesClient, nodeSelectorAll)
+			nodesReady, err := ctx.allNodesAreReady()
 			if err != nil {
 				return err
 			}
