@@ -730,6 +730,12 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 					return err
 				}
 
+				// termination call was successful, so we can try to delete the node from the API
+				err = ctx.deleteKubernetesNode(instance.NodeName)
+				if err != nil {
+					log.Warnf("failed to delete the node %v: %v", instance.NodeName, err)
+				}
+
 				// Throttle deletion
 				ctx.TerminatedInstances++
 				ctx.exposeMetric(instance.NodeName, instance.InstanceID, terminationReasonUnhealthy, NodeReaperResultMetricName, float64(ctx.TerminatedInstances))
