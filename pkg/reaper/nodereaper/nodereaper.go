@@ -78,6 +78,8 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 	ctx.ReapOld = args.ReapOld
 	ctx.MaxKill = args.MaxKill
 	ctx.ControlPlaneNodeCount = args.ControlPlaneNodeCount
+	ctx.NodeHealthcheckIntervalSeconds = args.NodeHealthcheckIntervalSeconds
+	ctx.NodeHealthcheckTimeoutSeconds = args.NodeHealthcheckTimeoutSeconds
 
 	log.Infof("AWS Region = %v", ctx.EC2Region)
 	log.Infof("Dry Run = %t", ctx.DryRun)

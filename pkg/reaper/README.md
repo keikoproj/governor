@@ -122,7 +122,7 @@ Flags:
       --local-mode                         Use cluster external auth
       --max-kill-nodes int                 Kill up to N nodes per job run, considering throttle wait times (default 3)
       --control-plane-node-count           Expected number of control plane nodes (default 3)
-      --node-healthcheck-interval          Time (in seconds) to wait between node healthchecks (default 5)
+      --node-healthcheck-interval          Time (in seconds) to wait between node healthchecks (default 10)
       --node-healthcheck-timeout           Time (in seconds) to wait before node healthcheck timeout (default 1800)
       --cluster-id                         Unique cluster identifier; used for node reaper locks. Only required if --locks-table-name is set. 
       --locks-table-name                   DynamoDB table name for storing the lock objects (default none)
