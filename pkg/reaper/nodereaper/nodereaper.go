@@ -762,7 +762,6 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 
 			return nil
-			return nil
 		}()
 
 		// only return on error, otherwise continue looping
