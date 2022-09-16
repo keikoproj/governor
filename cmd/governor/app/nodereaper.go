@@ -67,7 +67,7 @@ func init() {
 	nodeReapCmd.Flags().StringArrayVar(&nodeReaperArgs.ReapTainted, "reap-tainted", []string{}, "marks nodes with a given taint reapable, must be in format of comma separated taints key=value:effect, key:effect or key")
 	nodeReapCmd.Flags().Float64Var(&nodeReaperArgs.ReconsiderUnreapableAfter, "reconsider-unreapable-after", 45, "Time (in minutes) after which reconsider unreapable nodes")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.DrainTimeoutSeconds, "drain-timeout", 600, "Time (in seconds) to wait before drain command timeout")
-	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.NodeHealthcheckIntervalSeconds, "node-healthcheck-interval", 5, "Time (in seconds) to wait between node healthchecks")
+	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.NodeHealthcheckIntervalSeconds, "node-healthcheck-interval", 10, "Time (in seconds) to wait between node healthchecks")
 	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.NodeHealthcheckTimeoutSeconds, "node-healthcheck-timeout", 1800, "Time (in seconds) to wait before node healthcheck timeout")
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.IgnoreFailure, "ignore-failure", false, "Keep the failed node as cordoned")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ClusterID, "cluster-id", "", "Unique cluster identifier; used for node reaper locks")
