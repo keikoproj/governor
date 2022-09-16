@@ -688,6 +688,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 			}
 		}
 
+		var controlPlaneCheckError error
 		var lock LockRecord
 
 		if !ctx.DryRun && isControlPlaneNode && ctx.shouldLock() {
@@ -704,7 +705,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 		// wrap into a func to make sure defer works as expected
 		err = func() error {
 			defer func() {
-				if lock.Locked() {
+				if lock.Locked() && controlPlaneCheckError == nil {
 					// eat the error, the func will log if there's one
 					_ = lock.releaseLock(w.DDB)
 				}
@@ -749,6 +750,15 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 				time.Sleep(time.Second * time.Duration(ctx.ReapThrottle))
 			} else {
 				log.Warnf("dry run is on, '%v' will not be terminated", instance.NodeName)
+			}
+
+			controlPlaneCheckError = ctx.waitForControlPlaneReady()
+
+			// if the control plane did not become healthy in time,
+			// the next loop will fail the ready check, so just log the error here
+			// the deferred lock release will keep the lock in this case
+			if controlPlaneCheckError != nil {
+				log.Warnf("error while checking control plane health: %s", controlPlaneCheckError.Error())
 			}
 
 			return nil
