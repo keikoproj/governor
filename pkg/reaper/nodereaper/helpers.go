@@ -548,7 +548,7 @@ func (ctx *ReaperContext) waitForControlPlaneReady() error {
 		}
 
 		if !controlPlaneReady {
-			log.Infof("waiting for control plane to become healthy before releasing the lock")
+			log.Infof("control plane is not yet healthy")
 		}
 
 		time.Sleep(time.Second * time.Duration(ctx.NodeHealthcheckIntervalSeconds))
