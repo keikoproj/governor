@@ -242,6 +242,10 @@ func (ctx *ReaperContext) obtainReapLock(ddbAPI dynamodbiface.DynamoDBAPI, nodeN
 		tableName:  ctx.LocksTableName,
 	}
 
+	if ctx.LockExpirationSeconds > 0 {
+		lock.ExpiresAt = time.Now().Unix() + ctx.LockExpirationSeconds
+	}
+
 	err := lock.obtainLock(ddbAPI)
 	return lock, err
 }
