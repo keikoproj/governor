@@ -71,6 +71,7 @@ type Args struct {
 	PromPushgateway                string
 	ClusterID                      string
 	LocksTableName                 string
+	LockExpirationSeconds          int64
 }
 
 // ReaperContext holds the context of the node-reaper and target cluster
@@ -109,6 +110,7 @@ type ReaperContext struct {
 	IgnoreFailure                  bool
 	ClusterID                      string
 	LocksTableName                 string
+	LockExpirationSeconds          int64
 	// runtime
 	UnreadyNodes              []v1.Node
 	AllNodes                  []v1.Node
@@ -150,6 +152,7 @@ type LockRecord struct {
 	NodeName   string
 	InstanceID string
 	CreatedAt  string
+	ExpiresAt  int64
 	tableName  string
 	locked     bool
 }

@@ -72,4 +72,5 @@ func init() {
 	nodeReapCmd.Flags().BoolVar(&nodeReaperArgs.IgnoreFailure, "ignore-failure", false, "Keep the failed node as cordoned")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.ClusterID, "cluster-id", "", "Unique cluster identifier; used for node reaper locks")
 	nodeReapCmd.Flags().StringVar(&nodeReaperArgs.LocksTableName, "locks-table-name", "", "DynamoDB table name for storing the lock objects (default not set)")
+	nodeReapCmd.Flags().Int64Var(&nodeReaperArgs.LockExpirationSeconds, "lock-expiration-seconds", 0, "Expire locks after this time. Zero means no expiration.")
 }

@@ -252,9 +252,11 @@ func (ctx *ReaperContext) validateArguments(args *Args) error {
 
 		ctx.ClusterID = args.ClusterID
 		ctx.LocksTableName = args.LocksTableName
+		ctx.LockExpirationSeconds = args.LockExpirationSeconds
 
 		log.Infof("Cluster ID = %s", ctx.ClusterID)
 		log.Infof("Locks Table Name = %s", ctx.LocksTableName)
+		log.Infof("Lock Expiration Seconds = %d", ctx.LockExpirationSeconds)
 	}
 
 	return nil
