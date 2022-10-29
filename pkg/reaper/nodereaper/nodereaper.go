@@ -563,7 +563,7 @@ func (ctx *ReaperContext) reapOldNodes(w ReaperAwsAuth) error {
 
 		if !ctx.DryRun {
 			log.Infof("reaping old node %v -> %v", instance.NodeName, instance.InstanceID)
-			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
+			err = ctx.terminateInstance(w, instance.InstanceID, instance.NodeName)
 			if err != nil {
 				return err
 			}
@@ -623,7 +623,7 @@ func (ctx *ReaperContext) reapUnhealthyNodes(w ReaperAwsAuth) error {
 		if !ctx.DryRun {
 			log.Infof("reaping unhealthy node %v -> %v", instance.NodeName, instance)
 
-			err = ctx.terminateInstance(w.ASG, instance.InstanceID, instance.NodeName)
+			err = ctx.terminateInstance(w, instance.InstanceID, instance.NodeName)
 			if err != nil {
 				return err
 			}

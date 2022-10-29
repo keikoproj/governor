@@ -116,17 +116,41 @@ func (ctx *ReaperContext) uncordonNode(name string, dryRun bool, ignoreDrainFail
 	return nil
 }
 
-func (ctx *ReaperContext) terminateInstance(w autoscalingiface.AutoScalingAPI, id string, nodeName string) error {
+func (ctx *ReaperContext) terminateInstance(w ReaperAwsAuth, id string, nodeName string) error {
+    describeInput := &autoscaling.DescribeAutoScalingInstancesInput{
+        InstanceIds: []*string{
+            aws.String(id),
+        },
+    }
 
-	terminateInput := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
-		InstanceId:                     &id,
-		ShouldDecrementDesiredCapacity: aws.Bool(false),
-	}
+    response, derr := w.ASG.DescribeAutoScalingInstances(describeInput)
+    if derr != nil {
+        return derr
+    }
 
-	_, err := w.TerminateInstanceInAutoScalingGroup(terminateInput)
-	if err != nil {
-		return err
-	}
+    if len(response.AutoScalingInstances) == 0 {
+        terminateInput := &ec2.TerminateInstancesInput{
+            DryRun:      aws.Bool(false),
+            InstanceIds: []*string{
+                aws.String(id),
+            },
+        }
+
+        _, err := w.EC2.TerminateInstances(terminateInput)
+        if err != nil {
+            return err
+        }
+    } else {
+        terminateInput := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
+            InstanceId:                     &id,
+            ShouldDecrementDesiredCapacity: aws.Bool(false),
+        }
+
+        _, err := w.ASG.TerminateInstanceInAutoScalingGroup(terminateInput)
+        if err != nil {
+            return err
+        }
+    }
 
 	if err := ctx.annotateNode(nodeName, stateAnnotationKey, terminatedStateName); err != nil {
 		log.Warnf("failed to update state annotation on node '%v'", nodeName)
