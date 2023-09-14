@@ -245,7 +245,7 @@ func getNodeAgeMinutes(n *v1.Node) int {
 }
 
 func getNodeRegion(n *v1.Node) string {
-	var regionName  = ""
+	var regionName = ""
 	labels := n.GetLabels()
 	if labels != nil {
 		regionName = labels["topology.kubernetes.io/region"]
