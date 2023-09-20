@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/Pallinder/go-randomdata v1.1.0
-	github.com/aws/aws-sdk-go v1.45.10
+	github.com/aws/aws-sdk-go v1.45.11
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/onsi/gomega v1.7.0
 	github.com/pkg/errors v0.9.1
