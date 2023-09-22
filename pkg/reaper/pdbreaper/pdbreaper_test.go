@@ -16,6 +16,7 @@ limitations under the License.
 package pdbreaper
 
 import (
+	"context"
 	"flag"
 	"io/ioutil"
 	"testing"
@@ -72,7 +73,7 @@ func _fakeAPI(u *ReaperUnitTest) {
 		namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
 			Name: n.Name,
 		}}
-		_, err := u.FakeReaper.KubernetesClient.CoreV1().Namespaces().Create(namespace)
+		_, err := u.FakeReaper.KubernetesClient.CoreV1().Namespaces().Create(context.Background(), namespace, metav1.CreateOptions{})
 		if err != nil {
 			panic(err)
 		}
@@ -106,7 +107,7 @@ func _fakeAPI(u *ReaperUnitTest) {
 		}
 
 		pod.Status.StartTime = &metav1.Time{Time: time.Now().Add(time.Duration(-100) * time.Second)}
-		_, err := u.FakeReaper.KubernetesClient.CoreV1().Pods(p.Namespace).Create(pod)
+		_, err := u.FakeReaper.KubernetesClient.CoreV1().Pods(p.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 		if err != nil {
 			panic(err)
 		}
@@ -124,11 +125,11 @@ func _fakeAPI(u *ReaperUnitTest) {
 				Selector:       p.Selector,
 			},
 			Status: policyv1beta1.PodDisruptionBudgetStatus{
-				PodDisruptionsAllowed: p.PodDisruptionsAllowed,
+				DisruptionsAllowed: p.PodDisruptionsAllowed,
 				ExpectedPods:          p.ExpectedPods,
 			},
 		}
-		_, err := u.FakeReaper.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(p.Namespace).Create(pdb)
+		_, err := u.FakeReaper.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(p.Namespace).Create(context.Background(), pdb, metav1.CreateOptions{})
 		if err != nil {
 			panic(err)
 		}

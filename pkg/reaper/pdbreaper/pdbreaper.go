@@ -16,6 +16,7 @@ limitations under the License.
 package pdbreaper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -108,7 +109,7 @@ func (ctx *ReaperContext) scan() error {
 	var (
 		namespacedPDBs = make(map[string][]policyv1beta1.PodDisruptionBudget)
 	)
-	pdbs, err := ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets("").List(metav1.ListOptions{})
+	pdbs, err := ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "failed to list PDBs")
 	}
@@ -140,8 +141,8 @@ func (ctx *ReaperContext) scan() error {
 		}
 
 		// if pdb is allowing disruptions, it is non-blocking
-		if pdb.Status.PodDisruptionsAllowed != 0 {
-			log.Infof("ignoring pdb %v since it is allowing %v disruptions", pdbNamespacedName(pdb), pdb.Status.PodDisruptionsAllowed)
+		if pdb.Status.DisruptionsAllowed != 0 {
+			log.Infof("ignoring pdb %v since it is allowing %v disruptions", pdbNamespacedName(pdb), pdb.Status.DisruptionsAllowed)
 			continue
 		}
 		// if no pods match the selector / expected, it is non-blocking
@@ -176,7 +177,7 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 			continue
 		}
 
-		err = ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(namespace).Delete(name, &metav1.DeleteOptions{})
+		err = ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 		if err != nil {
 			if kerrors.IsNotFound(err) {
 				continue
@@ -311,7 +312,7 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 
 func (ctx *ReaperContext) listPodsWithSelector(namespace, selector string) ([]corev1.Pod, error) {
 	var pods []corev1.Pod
-	podList, err := ctx.KubernetesClient.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: selector})
+	podList, err := ctx.KubernetesClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return pods, errors.Wrapf(err, "failed to list pods with selector '%v'", selector)
 	}
@@ -346,7 +347,7 @@ func (ctx *ReaperContext) publishEvent(pdb policyv1beta1.PodDisruptionBudget, re
 		FirstTimestamp: metav1.NewTime(now),
 		LastTimestamp:  metav1.NewTime(now),
 	}
-	_, err := ctx.KubernetesClient.CoreV1().Events(pdbNamespace).Create(event)
+	_, err := ctx.KubernetesClient.CoreV1().Events(pdbNamespace).Create(context.Background(), event, metav1.CreateOptions{})
 	if err != nil {
 		return errors.Wrap(err, "failed to publish event")
 	}
