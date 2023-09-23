@@ -45,15 +45,15 @@ const (
 	// ReapOperationCompleted identifies the reap operation of a completed pod
 	ReapOperationCompleted = "CompletedPod"
 
-	// NamespaceExclusionAnnotationKey is the annotation key for exlcuding a namespace from reap events
+	// NamespaceExclusionAnnotationKey is the annotation key for excluding a namespace from reap events
 	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/disable-pod-reaper"
-	// NamespaceCompletedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping completed pods
+	// NamespaceCompletedExclusionAnnotationKey is the annotation key for excluding a namespace from reaping completed pods
 	NamespaceCompletedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
-	// NamespaceFailedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping failed pods
+	// NamespaceFailedExclusionAnnotationKey is the annotation key for excluding a namespace from reaping failed pods
 	NamespaceFailedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
-	// NamespaceStuckExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping stuck pods
+	// NamespaceStuckExclusionAnnotationKey is the annotation key for excluding a namespace from reaping stuck pods
 	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
-	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
+	// NamespaceExclusionEnabledAnnotationValue is the annotation value for excluding a namespace from reap events
 	NamespaceExclusionEnabledAnnotationValue = "true"
 
 	TerminatedPodReason       = "TerminatedPod"
