@@ -838,7 +838,7 @@ func hasSkipLabel(node v1.Node, label string) bool {
 }
 
 func reconsiderUnreapableNode(node v1.Node, reapableAfter float64) bool {
-	//For backward compatibilty
+	//For backward compatibility
 	if nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") {
 		return true
 	}
