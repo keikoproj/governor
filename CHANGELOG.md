@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Bleeding-edge development, not yet released
 
+## [v0.4.0] - 2023-09-26
+
+### What's Changed
+* upgrade CI to use newer ubuntu version by @ZihanJiang96 in https://github.com/keikoproj/governor/pull/82
+* Bump golang.org/x/net from 0.0.0-20210525063256-abc453219eb5 to 0.7.0 by @dependabot in https://github.com/keikoproj/governor/pull/75
+* Create dependabot.yml by @tekenstam in https://github.com/keikoproj/governor/pull/77
+* Bump github.com/aws/aws-sdk-go from 1.32.4 to 1.45.10 by @dependabot in https://github.com/keikoproj/governor/pull/83
+* Bump docker/login-action from 1 to 3 by @dependabot in https://github.com/keikoproj/governor/pull/92
+* Bump golang.org/x/crypto from 0.0.0-20200622213623-75b288015ac9 to 0.1.0 by @dependabot in https://github.com/keikoproj/governor/pull/80
+* Bump github.com/spf13/viper from 1.3.1 to 1.16.0 by @dependabot in https://github.com/keikoproj/governor/pull/84
+* Bump actions/setup-go from 2 to 4 by @dependabot in https://github.com/keikoproj/governor/pull/88
+* Bump docker/setup-qemu-action from 1 to 3 by @dependabot in https://github.com/keikoproj/governor/pull/89
+* Bump docker/build-push-action from 2 to 5 by @dependabot in https://github.com/keikoproj/governor/pull/90
+* Bump docker/setup-buildx-action from 1 to 3 by @dependabot in https://github.com/keikoproj/governor/pull/91
+* Bump github.com/prometheus/client_golang from 1.11.0 to 1.11.1 by @dependabot in https://github.com/keikoproj/governor/pull/86
+* Bump github.com/stretchr/testify from 1.5.1 to 1.8.4 by @dependabot in https://github.com/keikoproj/governor/pull/85
+* Fix action build badge by @tekenstam in https://github.com/keikoproj/governor/pull/93
+* Update to go 1.19 by @tekenstam in https://github.com/keikoproj/governor/pull/94
+* Update client-go to v0.17.17 by @tekenstam in https://github.com/keikoproj/governor/pull/95
+* Bump actions/checkout from 2 to 4 by @dependabot in https://github.com/keikoproj/governor/pull/99
+* Bump github.com/aws/aws-sdk-go from 1.45.10 to 1.45.11 by @dependabot in https://github.com/keikoproj/governor/pull/101
+* Bump github.com/sirupsen/logrus from 1.6.0 to 1.9.3 by @dependabot in https://github.com/keikoproj/governor/pull/104
+* Bump github.com/spf13/cobra from 0.0.3 to 0.0.7 by @dependabot in https://github.com/keikoproj/governor/pull/102
+* Fix dependabot config by @tekenstam in https://github.com/keikoproj/governor/pull/106
+* update packages by @shreyas-badiger in https://github.com/keikoproj/governor/pull/105
+* Update GH actions to newer versions by @tekenstam in https://github.com/keikoproj/governor/pull/110
+* Bump github.com/aws/aws-sdk-go from 1.45.11 to 1.45.14 by @dependabot in https://github.com/keikoproj/governor/pull/107
+* Bump github.com/Pallinder/go-randomdata from 1.1.0 to 1.2.0 by @dependabot in https://github.com/keikoproj/governor/pull/103
+* Bump github.com/prometheus/client_golang from 1.11.1 to 1.16.0 by @dependabot in https://github.com/keikoproj/governor/pull/108
+* Update gomega to v1.22.1 by @tekenstam in https://github.com/keikoproj/governor/pull/111
+* Fix misspelling in comments by @tekenstam in https://github.com/keikoproj/governor/pull/112
+* Minor spelling error correction by @tekenstam in https://github.com/keikoproj/governor/pull/113
+* Add CHANGELOG.md by @tekenstam in https://github.com/keikoproj/governor/pull/114
+
+### New Contributors
+* @ZihanJiang96 made their first contribution in https://github.com/keikoproj/governor/pull/82
+* @dependabot made their first contribution in https://github.com/keikoproj/governor/pull/75
+* @tekenstam made their first contribution in https://github.com/keikoproj/governor/pull/77
+* @shreyas-badiger made their first contribution in https://github.com/keikoproj/governor/pull/105
+
+**Full Changelog**: https://github.com/keikoproj/governor/compare/0.3.4...0.4.0
+
+
 ## [v0.3.4] - 2022-06-03
 
 ### What's Changed
