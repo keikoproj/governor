@@ -274,7 +274,7 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 	for namespace, pdbs := range ctx.NamespacesWithMultiplePodDisruptionBudgets {
 		namespacePodsWithBudget := make([]corev1.Pod, 0)
 
-		// check if multiple PDBs in a namespace contain refernece to same pods
+		// check if multiple PDBs in a namespace contain reference to same pods
 		for _, pdb := range pdbs {
 			log.Infof("evaluating multi-namespace PDB %v", pdbNamespacedName(pdb))
 
