@@ -24,7 +24,7 @@ import (
 
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
@@ -54,9 +54,9 @@ func _fakeReaperContext() *ReaperContext {
 		CrashLoopRestartCount:                      5,
 		AllCrashLoop:                               false,
 		ReapNotReady:                               true,
-		ReapablePodDisruptionBudgets:               make([]policyv1beta1.PodDisruptionBudget, 0),
-		ClusterBlockingPodDisruptionBudgets:        make(map[string][]policyv1beta1.PodDisruptionBudget),
-		NamespacesWithMultiplePodDisruptionBudgets: make(map[string][]policyv1beta1.PodDisruptionBudget),
+		ReapablePodDisruptionBudgets:               make([]policyv1.PodDisruptionBudget, 0),
+		ClusterBlockingPodDisruptionBudgets:        make(map[string][]policyv1.PodDisruptionBudget),
+		NamespacesWithMultiplePodDisruptionBudgets: make(map[string][]policyv1.PodDisruptionBudget),
 		KubernetesClient:                           fake.NewSimpleClientset(),
 	}
 	return ctx
@@ -114,22 +114,22 @@ func _fakeAPI(u *ReaperUnitTest) {
 	}
 
 	for _, p := range u.Mocks.PDBs {
-		pdb := &policyv1beta1.PodDisruptionBudget{
+		pdb := &policyv1.PodDisruptionBudget{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      p.Name,
 				Namespace: p.Namespace,
 			},
-			Spec: policyv1beta1.PodDisruptionBudgetSpec{
+			Spec: policyv1.PodDisruptionBudgetSpec{
 				MinAvailable:   p.MinAvailable,
 				MaxUnavailable: p.MaxUnavailable,
 				Selector:       p.Selector,
 			},
-			Status: policyv1beta1.PodDisruptionBudgetStatus{
+			Status: policyv1.PodDisruptionBudgetStatus{
 				DisruptionsAllowed: p.PodDisruptionsAllowed,
-				ExpectedPods:          p.ExpectedPods,
+				ExpectedPods:       p.ExpectedPods,
 			},
 		}
-		_, err := u.FakeReaper.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(p.Namespace).Create(context.Background(), pdb, metav1.CreateOptions{})
+		_, err := u.FakeReaper.KubernetesClient.PolicyV1().PodDisruptionBudgets(p.Namespace).Create(context.Background(), pdb, metav1.CreateOptions{})
 		if err != nil {
 			panic(err)
 		}
@@ -158,7 +158,7 @@ type ReaperUnitTest struct {
 	TestDescription         string
 	FakeReaper              *ReaperContext
 	Mocks                   KubernetesMockAPI
-	PodDisruptionBudgets    []policyv1beta1.PodDisruptionBudget
+	PodDisruptionBudgets    []policyv1.PodDisruptionBudget
 	Pods                    []corev1.Pod
 	ExpectedReapableBudgets int
 	ExpectedReapedBudgets   int
