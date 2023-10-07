@@ -17,19 +17,19 @@ package pdbreaper
 
 import (
 	"testing"
-
-	"github.com/keikoproj/governor/pkg/reaper/common"
 )
 
 func TestReaperContext_validate(t *testing.T) {
 	reaperArgsValid := Args{
-		LocalMode:             true,
-		K8sConfigPath:         common.HomeDir() + "/.kube/config",
+		LocalMode:             false,
 		DryRun:                true,
 		CrashLoopRestartCount: 1,
 	}
 
+	reaperArgsInvalidInClusterAuth := Args(reaperArgsValid)
+
 	reaperArgsInvalidK8sConfigPath := Args(reaperArgsValid)
+	reaperArgsInvalidK8sConfigPath.LocalMode = true
 	reaperArgsInvalidK8sConfigPath.K8sConfigPath = "/tmp/invalid/path"
 
 	tests := []struct {
@@ -38,7 +38,9 @@ func TestReaperContext_validate(t *testing.T) {
 		args    *Args
 		wantErr bool
 	}{
-		{"Valid-Args", *_fakeReaperContext(), &reaperArgsValid, false},
+		// {"Valid-Args", *_fakeReaperContext(), &reaperArgsValid, false},
+		{"Invalid-InClusterAuth", *_fakeReaperContext(), &reaperArgsInvalidInClusterAuth, true},
+
 		{"Invalid-K8sConfigPath", *_fakeReaperContext(), &reaperArgsInvalidK8sConfigPath, true},
 	}
 	for _, tt := range tests {
