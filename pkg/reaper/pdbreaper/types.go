@@ -127,7 +127,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 
 	if args.K8sConfigPath != "" {
 		if ok := common.PathExists(args.K8sConfigPath); !ok {
-			return errors.Errorf("--kubeconfig path '%v' was not found", ctx.KubernetesConfigPath)
+			return errors.Errorf("--kubeconfig path '%v' was not found", args.K8sConfigPath)
 		}
 		ctx.KubernetesConfigPath = args.K8sConfigPath
 	}
