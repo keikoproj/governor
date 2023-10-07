@@ -16,6 +16,7 @@ limitations under the License.
 package pdbreaper
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,6 +48,10 @@ func TestReaperContext_validate(t *testing.T) {
 	reaperArgsInvalidK8sConfigPath.LocalMode = true
 	reaperArgsInvalidK8sConfigPath.K8sConfigPath = "/tmp/invalid/path"
 
+	reaperArgsInvalidK8sConfigPath2 := Args(reaperArgsValid)
+	reaperArgsInvalidK8sConfigPath2.LocalMode = true
+	reaperArgsInvalidK8sConfigPath2.K8sConfigPath = os.Getenv("HOME")
+
 	tests := []struct {
 		name       string
 		fields     ReaperContext
@@ -60,6 +65,7 @@ func TestReaperContext_validate(t *testing.T) {
 		{"Invalid-InClusterAuth", *_fakeReaperContext(), &reaperArgsInvalidInClusterAuth, true, "in-cluster auth failed: unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined"},
 		{"Invalid-LocalMode", *_fakeReaperContext(), &reaperArgsInvalidLocalMode, true, "cannot use --local-mode without --kubeconfig"},
 		{"Invalid-K8sConfigPath", *_fakeReaperContext(), &reaperArgsInvalidK8sConfigPath, true, "--kubeconfig path '/tmp/invalid/path' was not found"},
+		{"Invalid-K8sConfigPath2", *_fakeReaperContext(), &reaperArgsInvalidK8sConfigPath2, true, "cluster external auth failed: error loading config file"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,7 +94,7 @@ func TestReaperContext_validate(t *testing.T) {
 			if err := ctx.validate(tt.args); (err != nil) != tt.wantErr {
 				t.Errorf("ReaperContext.validate() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
-				assert.EqualErrorf(t, err, tt.wantErrMsg, "expected error containing %q, got %s", tt.wantErrMsg, err.Error())
+				assert.ErrorContainsf(t, err, tt.wantErrMsg, "expected error containing %q, got %s", tt.wantErrMsg, err.Error())
 			}
 		})
 	}
