@@ -102,7 +102,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	}
 	ctx.CrashLoopRestartCount = args.CrashLoopRestartCount
 
-	if args.CrashLoopRestartCount < 1 {
+	if args.ReapNotReadyThreshold < 1 {
 		return errors.Errorf("--not-ready-threshold-seconds value cannot be less than 1")
 	}
 	ctx.ReapNotReadyThreshold = args.ReapNotReadyThreshold
