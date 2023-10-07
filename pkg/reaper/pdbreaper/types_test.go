@@ -17,6 +17,8 @@ package pdbreaper
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestReaperContext_validate(t *testing.T) {
@@ -25,6 +27,8 @@ func TestReaperContext_validate(t *testing.T) {
 		DryRun:                true,
 		CrashLoopRestartCount: 1,
 		ReapNotReadyThreshold: 1,
+		PromPushgateway:       "http://localhost:9091",
+		ExcludedNamespaces:    []string{"kube-system"},
 	}
 
 	reaperArgsInvalidCrashLoopRestartCount := Args(reaperArgsValid)
@@ -36,21 +40,26 @@ func TestReaperContext_validate(t *testing.T) {
 	reaperArgsInvalidInClusterAuth := Args(reaperArgsValid)
 	reaperArgsInvalidInClusterAuth.LocalMode = false
 
+	reaperArgsInvalidLocalMode := Args(reaperArgsValid)
+	reaperArgsInvalidLocalMode.LocalMode = true
+
 	reaperArgsInvalidK8sConfigPath := Args(reaperArgsValid)
 	reaperArgsInvalidK8sConfigPath.LocalMode = true
 	reaperArgsInvalidK8sConfigPath.K8sConfigPath = "/tmp/invalid/path"
 
 	tests := []struct {
-		name    string
-		fields  ReaperContext
-		args    *Args
-		wantErr bool
+		name       string
+		fields     ReaperContext
+		args       *Args
+		wantErr    bool
+		wantErrMsg string
 	}{
 		// {"Valid-Args", *_fakeReaperContext(), &reaperArgsValid, false},
-		{"Invalid-CrashLoopRestartCount", *_fakeReaperContext(), &reaperArgsInvalidCrashLoopRestartCount, true},
-		{"Invalid-ReapNotReadyThreshold", *_fakeReaperContext(), &reaperArgsInvalidReapNotReadyThreshold, true},
-		{"Invalid-InClusterAuth", *_fakeReaperContext(), &reaperArgsInvalidInClusterAuth, true},
-		{"Invalid-K8sConfigPath", *_fakeReaperContext(), &reaperArgsInvalidK8sConfigPath, true},
+		{"Invalid-CrashLoopRestartCount", *_fakeReaperContext(), &reaperArgsInvalidCrashLoopRestartCount, true, "--crashloop-restart-count value cannot be less than 1"},
+		{"Invalid-ReapNotReadyThreshold", *_fakeReaperContext(), &reaperArgsInvalidReapNotReadyThreshold, true, "--not-ready-threshold-seconds value cannot be less than 1"},
+		{"Invalid-InClusterAuth", *_fakeReaperContext(), &reaperArgsInvalidInClusterAuth, true, "in-cluster auth failed: unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined"},
+		{"Invalid-LocalMode", *_fakeReaperContext(), &reaperArgsInvalidLocalMode, true, "cannot use --local-mode without --kubeconfig"},
+		{"Invalid-K8sConfigPath", *_fakeReaperContext(), &reaperArgsInvalidK8sConfigPath, true, "--kubeconfig path '/tmp/invalid/path' was not found"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,6 +87,8 @@ func TestReaperContext_validate(t *testing.T) {
 			}
 			if err := ctx.validate(tt.args); (err != nil) != tt.wantErr {
 				t.Errorf("ReaperContext.validate() error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				assert.EqualErrorf(t, err, tt.wantErrMsg, "expected error containing %q, got %s", tt.wantErrMsg, err.Error())
 			}
 		})
 	}
