@@ -24,6 +24,7 @@ func TestReaperContext_validate(t *testing.T) {
 		LocalMode:             false,
 		DryRun:                true,
 		CrashLoopRestartCount: 1,
+		ReapNotReadyThreshold: 1,
 	}
 
 	reaperArgsInvalidCrashLoopRestartCount := Args(reaperArgsValid)
@@ -49,7 +50,6 @@ func TestReaperContext_validate(t *testing.T) {
 		{"Invalid-CrashLoopRestartCount", *_fakeReaperContext(), &reaperArgsInvalidCrashLoopRestartCount, true},
 		{"Invalid-ReapNotReadyThreshold", *_fakeReaperContext(), &reaperArgsInvalidReapNotReadyThreshold, true},
 		{"Invalid-InClusterAuth", *_fakeReaperContext(), &reaperArgsInvalidInClusterAuth, true},
-
 		{"Invalid-K8sConfigPath", *_fakeReaperContext(), &reaperArgsInvalidK8sConfigPath, true},
 	}
 	for _, tt := range tests {
