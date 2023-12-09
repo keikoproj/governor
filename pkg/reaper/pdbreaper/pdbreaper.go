@@ -16,6 +16,7 @@ limitations under the License.
 package pdbreaper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -25,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -106,9 +107,9 @@ func (ctx *ReaperContext) reap() error {
 func (ctx *ReaperContext) scan() error {
 
 	var (
-		namespacedPDBs = make(map[string][]policyv1beta1.PodDisruptionBudget)
+		namespacedPDBs = make(map[string][]policyv1.PodDisruptionBudget)
 	)
-	pdbs, err := ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets("").List(metav1.ListOptions{})
+	pdbs, err := ctx.KubernetesClient.PolicyV1().PodDisruptionBudgets("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "failed to list PDBs")
 	}
@@ -140,8 +141,8 @@ func (ctx *ReaperContext) scan() error {
 		}
 
 		// if pdb is allowing disruptions, it is non-blocking
-		if pdb.Status.PodDisruptionsAllowed != 0 {
-			log.Infof("ignoring pdb %v since it is allowing %v disruptions", pdbNamespacedName(pdb), pdb.Status.PodDisruptionsAllowed)
+		if pdb.Status.DisruptionsAllowed != 0 {
+			log.Infof("ignoring pdb %v since it is allowing %v disruptions", pdbNamespacedName(pdb), pdb.Status.DisruptionsAllowed)
 			continue
 		}
 		// if no pods match the selector / expected, it is non-blocking
@@ -176,7 +177,7 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 			continue
 		}
 
-		err = ctx.KubernetesClient.PolicyV1beta1().PodDisruptionBudgets(namespace).Delete(name, &metav1.DeleteOptions{})
+		err = ctx.KubernetesClient.PolicyV1().PodDisruptionBudgets(namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 		if err != nil {
 			if kerrors.IsNotFound(err) {
 				continue
@@ -273,7 +274,7 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 	for namespace, pdbs := range ctx.NamespacesWithMultiplePodDisruptionBudgets {
 		namespacePodsWithBudget := make([]corev1.Pod, 0)
 
-		// check if multiple PDBs in a namespace contain refernece to same pods
+		// check if multiple PDBs in a namespace contain reference to same pods
 		for _, pdb := range pdbs {
 			log.Infof("evaluating multi-namespace PDB %v", pdbNamespacedName(pdb))
 
@@ -311,7 +312,7 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 
 func (ctx *ReaperContext) listPodsWithSelector(namespace, selector string) ([]corev1.Pod, error) {
 	var pods []corev1.Pod
-	podList, err := ctx.KubernetesClient.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: selector})
+	podList, err := ctx.KubernetesClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return pods, errors.Wrapf(err, "failed to list pods with selector '%v'", selector)
 	}
@@ -319,7 +320,7 @@ func (ctx *ReaperContext) listPodsWithSelector(namespace, selector string) ([]co
 	return pods, nil
 }
 
-func (ctx *ReaperContext) publishEvent(pdb policyv1beta1.PodDisruptionBudget, reason, msg string) error {
+func (ctx *ReaperContext) publishEvent(pdb policyv1.PodDisruptionBudget, reason, msg string) error {
 	var (
 		pdbNamespace   = pdb.GetNamespace()
 		pdbName        = pdb.GetName()
@@ -346,14 +347,14 @@ func (ctx *ReaperContext) publishEvent(pdb policyv1beta1.PodDisruptionBudget, re
 		FirstTimestamp: metav1.NewTime(now),
 		LastTimestamp:  metav1.NewTime(now),
 	}
-	_, err := ctx.KubernetesClient.CoreV1().Events(pdbNamespace).Create(event)
+	_, err := ctx.KubernetesClient.CoreV1().Events(pdbNamespace).Create(context.Background(), event, metav1.CreateOptions{})
 	if err != nil {
 		return errors.Wrap(err, "failed to publish event")
 	}
 	return nil
 }
 
-func (ctx *ReaperContext) addReapablePodDisruptionBudget(pdb ...policyv1beta1.PodDisruptionBudget) {
+func (ctx *ReaperContext) addReapablePodDisruptionBudget(pdb ...policyv1.PodDisruptionBudget) {
 	for _, p := range ctx.ReapablePodDisruptionBudgets {
 		if reflect.DeepEqual(p, pdb) {
 			return
@@ -364,7 +365,7 @@ func (ctx *ReaperContext) addReapablePodDisruptionBudget(pdb ...policyv1beta1.Po
 	ctx.ReapablePodDisruptionBudgets = append(ctx.ReapablePodDisruptionBudgets, pdb...)
 }
 
-func isMisconfigured(pdb policyv1beta1.PodDisruptionBudget, pods []corev1.Pod) (bool, error) {
+func isMisconfigured(pdb policyv1.PodDisruptionBudget, pods []corev1.Pod) (bool, error) {
 	var (
 		maxUnavailable = pdb.Spec.MaxUnavailable
 		minAvailable   = pdb.Spec.MinAvailable
@@ -479,7 +480,7 @@ func isPodReadinessThresholdPast(startTime metav1.Time, thresholdSeconds int) bo
 	return currentTimestamp.Time.Sub(startTime.Time) >= time.Duration(thresholdSeconds)*time.Second
 }
 
-func (ctx *ReaperContext) exposeMetric(pdb policyv1beta1.PodDisruptionBudget, eventReason string, value float64) error {
+func (ctx *ReaperContext) exposeMetric(pdb policyv1.PodDisruptionBudget, eventReason string, value float64) error {
 	if ctx.MetricsAPI != nil {
 		var tags = make(map[string]string)
 		tags["namespace"] = pdb.GetNamespace()

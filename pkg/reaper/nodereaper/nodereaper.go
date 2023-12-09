@@ -16,6 +16,7 @@ limitations under the License.
 package nodereaper
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"reflect"
@@ -672,21 +673,21 @@ func (ctx *ReaperContext) scan(w ReaperAwsAuth) error {
 
 	log.Infof("Self Pod Namespace = %v", ctx.SelfNamespace)
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{})
+	nodeList, err := corev1.Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("failed to list all nodes, %v", err)
 		return err
 	}
 	ctx.AllNodes = nodeList.Items
 
-	podList, err := corev1.Pods("").List(metav1.ListOptions{})
+	podList, err := corev1.Pods("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("failed to list all pods, %v", err)
 		return err
 	}
 	ctx.AllPods = podList.Items
 
-	eventList, err := corev1.Events("").List(metav1.ListOptions{FieldSelector: "involvedObject.kind=Node"})
+	eventList, err := corev1.Events("").List(context.Background(), metav1.ListOptions{FieldSelector: "involvedObject.kind=Node"})
 	if err != nil {
 		log.Errorf("failed to list all events, %v", err)
 		return err
@@ -837,7 +838,7 @@ func hasSkipLabel(node v1.Node, label string) bool {
 }
 
 func reconsiderUnreapableNode(node v1.Node, reapableAfter float64) bool {
-	//For backward compatibilty
+	//For backward compatibility
 	if nodeHasAnnotation(node, ageUnreapableAnnotationKey, "true") {
 		return true
 	}

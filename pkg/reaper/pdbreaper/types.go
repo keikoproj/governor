@@ -21,7 +21,7 @@ import (
 	"github.com/keikoproj/governor/pkg/reaper/common"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -56,9 +56,9 @@ type ReaperContext struct {
 	ReapNotReady                               bool
 	ReapNotReadyThreshold                      int
 	AllNotReady                                bool
-	ReapablePodDisruptionBudgets               []policyv1beta1.PodDisruptionBudget
-	ClusterBlockingPodDisruptionBudgets        map[string][]policyv1beta1.PodDisruptionBudget
-	NamespacesWithMultiplePodDisruptionBudgets map[string][]policyv1beta1.PodDisruptionBudget
+	ReapablePodDisruptionBudgets               []policyv1.PodDisruptionBudget
+	ClusterBlockingPodDisruptionBudgets        map[string][]policyv1.PodDisruptionBudget
+	NamespacesWithMultiplePodDisruptionBudgets map[string][]policyv1.PodDisruptionBudget
 	ExcludedNamespaces                         []string
 	ReapablePodDisruptionBudgetsCount          int
 	ReapedPodDisruptionBudgetCount             int
@@ -69,9 +69,9 @@ type ReaperContext struct {
 func NewReaperContext(args *Args) *ReaperContext {
 	ctx := &ReaperContext{
 		ExcludedNamespaces:                         make([]string, 0),
-		ReapablePodDisruptionBudgets:               make([]policyv1beta1.PodDisruptionBudget, 0),
-		ClusterBlockingPodDisruptionBudgets:        make(map[string][]policyv1beta1.PodDisruptionBudget),
-		NamespacesWithMultiplePodDisruptionBudgets: make(map[string][]policyv1beta1.PodDisruptionBudget),
+		ReapablePodDisruptionBudgets:               make([]policyv1.PodDisruptionBudget, 0),
+		ClusterBlockingPodDisruptionBudgets:        make(map[string][]policyv1.PodDisruptionBudget),
+		NamespacesWithMultiplePodDisruptionBudgets: make(map[string][]policyv1.PodDisruptionBudget),
 	}
 
 	if err := ctx.validate(args); err != nil {
@@ -102,7 +102,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	}
 	ctx.CrashLoopRestartCount = args.CrashLoopRestartCount
 
-	if args.CrashLoopRestartCount < 1 {
+	if args.ReapNotReadyThreshold < 1 {
 		return errors.Errorf("--not-ready-threshold-seconds value cannot be less than 1")
 	}
 	ctx.ReapNotReadyThreshold = args.ReapNotReadyThreshold
@@ -127,7 +127,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 
 	if args.K8sConfigPath != "" {
 		if ok := common.PathExists(args.K8sConfigPath); !ok {
-			return errors.Errorf("--kubeconfig path '%v' was not found", ctx.KubernetesConfigPath)
+			return errors.Errorf("--kubeconfig path '%v' was not found", args.K8sConfigPath)
 		}
 		ctx.KubernetesConfigPath = args.K8sConfigPath
 	}
@@ -154,7 +154,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	return nil
 }
 
-func pdbNamespacedName(pdb policyv1beta1.PodDisruptionBudget) string {
+func pdbNamespacedName(pdb policyv1.PodDisruptionBudget) string {
 	var (
 		name      = pdb.GetName()
 		namespace = pdb.GetNamespace()
@@ -163,7 +163,7 @@ func pdbNamespacedName(pdb policyv1beta1.PodDisruptionBudget) string {
 	return fmt.Sprintf("%v/%v", namespace, name)
 }
 
-func pdbSliceNamespacedNames(pdbs []policyv1beta1.PodDisruptionBudget) []string {
+func pdbSliceNamespacedNames(pdbs []policyv1.PodDisruptionBudget) []string {
 	names := make([]string, 0)
 	for _, pdb := range pdbs {
 		namespacedName := pdbNamespacedName(pdb)

@@ -201,7 +201,7 @@ func (ctx *ReaperContext) annotateNode(nodeName, annotationKey, annotationValue 
 
 func (ctx *ReaperContext) publishEvent(namespace string, event *v1.Event) error {
 	log.Infof("publishing event: %v", event.Reason)
-	_, err := ctx.KubernetesClient.CoreV1().Events(namespace).Create(event)
+	_, err := ctx.KubernetesClient.CoreV1().Events(namespace).Create(context.Background(), event, metav1.CreateOptions{})
 	if err != nil {
 		log.Errorf("failed to publish event: %v", err)
 		return err
@@ -245,7 +245,7 @@ func getNodeAgeMinutes(n *v1.Node) int {
 }
 
 func getNodeRegion(n *v1.Node) string {
-	var regionName  = ""
+	var regionName = ""
 	labels := n.GetLabels()
 	if labels != nil {
 		regionName = labels["topology.kubernetes.io/region"]
@@ -338,7 +338,7 @@ func getAutoScalingGroup(w autoscalingiface.AutoScalingAPI, name string) (autosc
 }
 
 func dumpSpec(nodeName string, kubeClient kubernetes.Interface) error {
-	nodeObject, err := kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+	nodeObject, err := kubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -359,7 +359,7 @@ func nodeMeetsReapAfterThreshold(minuteThreshold float64, minutesSinceTransition
 
 func isMaster(node string, kubeClient kubernetes.Interface) (bool, error) {
 	corev1 := kubeClient.CoreV1()
-	nodeObject, err := corev1.Nodes().Get(node, metav1.GetOptions{})
+	nodeObject, err := corev1.Nodes().Get(context.Background(), node, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("failed to get node, %v", err)
 		return false, err
@@ -375,7 +375,7 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 	corev1 := kubeClient.CoreV1()
 	masterCount := 0
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{LabelSelector: "kubernetes.io/role=master"})
+	nodeList, err := corev1.Nodes().List(context.Background(), metav1.ListOptions{LabelSelector: "kubernetes.io/role=master"})
 	if err != nil {
 		log.Errorf("failed to list master nodes, %v", err)
 		return 0, err
@@ -391,7 +391,7 @@ func getHealthyMasterCount(kubeClient kubernetes.Interface) (int, error) {
 func allNodesAreReady(kubeClient kubernetes.Interface) (bool, error) {
 	corev1 := kubeClient.CoreV1()
 
-	nodeList, err := corev1.Nodes().List(metav1.ListOptions{})
+	nodeList, err := corev1.Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("failed to list all nodes, %v", err)
 		return false, err

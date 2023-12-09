@@ -16,6 +16,7 @@ limitations under the License.
 package podreaper
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -126,7 +127,7 @@ func loadFakeAPI(ctx *ReaperContext) {
 
 	// Create fake namespaces
 	for _, ns := range fakeNamespaces {
-		ctx.KubernetesClient.CoreV1().Namespaces().Create(ns)
+		ctx.KubernetesClient.CoreV1().Namespaces().Create(context.Background(), ns, metav1.CreateOptions{})
 	}
 }
 
@@ -190,7 +191,7 @@ func createFakePods(pods []FakePod, ctx *ReaperContext) {
 			pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, runningContainerStatus)
 		}
 
-		ctx.KubernetesClient.CoreV1().Pods(c.podNamespace).Create(pod)
+		ctx.KubernetesClient.CoreV1().Pods(c.podNamespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	}
 }
 

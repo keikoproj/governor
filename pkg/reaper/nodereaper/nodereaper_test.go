@@ -16,6 +16,7 @@ limitations under the License.
 package nodereaper
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -222,7 +223,7 @@ func loadFakeAPI(ctx *ReaperContext) {
 		namespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{
 			Name: c.namespaceName,
 		}}
-		ctx.KubernetesClient.CoreV1().Namespaces().Create(namespace)
+		ctx.KubernetesClient.CoreV1().Namespaces().Create(context.Background(), namespace, metav1.CreateOptions{})
 	}
 }
 
@@ -348,7 +349,7 @@ func createFakeNodes(nodes []FakeNode, ctx *ReaperContext) {
 			Conditions: nodeConditions,
 		}}
 
-		ctx.KubernetesClient.CoreV1().Nodes().Create(node)
+		ctx.KubernetesClient.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
 
 		for _, c := range fakePods {
 			createFakePod(c, ctx)
@@ -374,7 +375,7 @@ func createFakeEvents(events []FakeEvent, ctx *ReaperContext) {
 			Count:  e.count,
 			Reason: e.reason,
 		}
-		ctx.KubernetesClient.CoreV1().Events("default").Create(fakeEvent)
+		ctx.KubernetesClient.CoreV1().Events("default").Create(context.Background(), fakeEvent, metav1.CreateOptions{})
 	}
 }
 
@@ -413,7 +414,7 @@ func createFakePod(c FakePod, ctx *ReaperContext) {
 	}, Spec: v1.PodSpec{
 		NodeName: c.scheduledNode,
 	}}
-	ctx.KubernetesClient.CoreV1().Pods(c.podNamespace).Create(pod)
+	ctx.KubernetesClient.CoreV1().Pods(c.podNamespace).Create(context.Background(), pod, metav1.CreateOptions{})
 }
 
 func runFakeReaper(ctx *ReaperContext, awsAuth ReaperAwsAuth) {
@@ -1335,13 +1336,13 @@ func TestIgnoreFailure(t *testing.T) {
 		},
 		Nodes: []FakeNode{
 			{
-				nodeName: "ip-10-10-10-10.us-west-2.compute.local",
-				state:    "NotReady",
+				nodeName:   "ip-10-10-10-10.us-west-2.compute.local",
+				state:      "NotReady",
 				ageMinutes: 43200,
 			},
 			{
-				nodeName: "ip-10-10-10-11.us-west-2.compute.local",
-				state: 		"Unknown",
+				nodeName:   "ip-10-10-10-11.us-west-2.compute.local",
+				state:      "Unknown",
 				ageMinutes: 43200,
 			},
 			{
@@ -1363,11 +1364,11 @@ func TestIgnoreFailure(t *testing.T) {
 				kind:   "Node",
 			},
 		},
-		FakeReaper:				reaper,
-		ExpectedUnready:    	3,
-		ExpectedOldReapable:	3,
-		ExpectedDrainable:  	0,
-		ExpectedDrained:    	0,
+		FakeReaper:          reaper,
+		ExpectedUnready:     3,
+		ExpectedOldReapable: 3,
+		ExpectedDrainable:   0,
+		ExpectedDrained:     0,
 	}
 	testCase.Run(t, false)
 }
@@ -1726,7 +1727,6 @@ func TestRegionDetection(t *testing.T) {
 		t.Fatalf("expected Region: %v, got: %v", expectedRegion, providerRegion)
 	}
 }
-
 
 func TestSkipLabelReaper(t *testing.T) {
 	reaper := newFakeReaperContext()

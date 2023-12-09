@@ -283,7 +283,7 @@ In cases where a PDB is misconfigured, to allow 0 disruptions, it will always bl
 For example, if maxUnavailable is set to 0, the PDB will forever block node drains.
 
 ```yaml
-apiVersion: policy/v1beta1
+apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: misconfigured-pdb
@@ -297,7 +297,7 @@ spec:
 Alternatively, if minAvailable is used and the value configured matches the number of pods, the PDB will be considered reapable.
 
 ```yaml
-apiVersion: policy/v1beta1
+apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: misconfigured-pdb

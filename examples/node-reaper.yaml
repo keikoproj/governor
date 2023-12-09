@@ -43,7 +43,7 @@ roleRef:
   name: node-reaper
   apiGroup: rbac.authorization.k8s.io
 ---
-apiVersion: batch/v1beta1
+apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: node-reaper

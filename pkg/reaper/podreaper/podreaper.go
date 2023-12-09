@@ -16,6 +16,7 @@ limitations under the License.
 package podreaper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -44,15 +45,15 @@ const (
 	// ReapOperationCompleted identifies the reap operation of a completed pod
 	ReapOperationCompleted = "CompletedPod"
 
-	// NamespaceExclusionAnnotationKey is the annotation key for exlcuding a namespace from reap events
+	// NamespaceExclusionAnnotationKey is the annotation key for excluding a namespace from reap events
 	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/disable-pod-reaper"
-	// NamespaceCompletedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping completed pods
+	// NamespaceCompletedExclusionAnnotationKey is the annotation key for excluding a namespace from reaping completed pods
 	NamespaceCompletedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
-	// NamespaceFailedExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping failed pods
+	// NamespaceFailedExclusionAnnotationKey is the annotation key for excluding a namespace from reaping failed pods
 	NamespaceFailedExclusionAnnotationKey = "governor.keikoproj.io/disable-completed-pod-reap"
-	// NamespaceStuckExclusionAnnotationKey is the annotation key for exlcuding a namespace from reaping stuck pods
+	// NamespaceStuckExclusionAnnotationKey is the annotation key for excluding a namespace from reaping stuck pods
 	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
-	// NamespaceExclusionEnabledAnnotationValue is the annotation value for exlcuding a namespace from reap events
+	// NamespaceExclusionEnabledAnnotationValue is the annotation value for excluding a namespace from reap events
 	NamespaceExclusionEnabledAnnotationValue = "true"
 
 	TerminatedPodReason       = "TerminatedPod"
@@ -168,11 +169,11 @@ func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 	for pod, namespace := range pods {
 		log.Infof("reaping %v/%v", namespace, pod)
 		gracePeriod := int64(0)
-		forceDeleteOpts := &metav1.DeleteOptions{}
+		forceDeleteOpts := metav1.DeleteOptions{}
 		forceDeleteOpts.GracePeriodSeconds = &gracePeriod
 
 		// Dump pod json
-		podObject, err := corev1.Pods(namespace).Get(pod, metav1.GetOptions{})
+		podObject, err := corev1.Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
 		if err != nil {
 			log.Warnf("failed to dump pod spec, %v", err)
 		}
@@ -185,7 +186,7 @@ func (ctx *ReaperContext) reapPods(pods map[string]string) error {
 		log.Infof("pod dump: %v", string(podDump))
 
 		if !ctx.DryRun {
-			err := corev1.Pods(namespace).Delete(pod, forceDeleteOpts)
+			err := corev1.Pods(namespace).Delete(context.Background(), pod, forceDeleteOpts)
 			if err != nil {
 				return err
 			}
@@ -354,13 +355,13 @@ func (ctx *ReaperContext) getPods() error {
 	corev1 := ctx.KubernetesClient.CoreV1()
 
 	// get pods in all namespaces
-	allPods, err := corev1.Pods("").List(metav1.ListOptions{})
+	allPods, err := corev1.Pods("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 	ctx.AllPods = allPods
 
-	namespaces, err := ctx.KubernetesClient.CoreV1().Namespaces().List(metav1.ListOptions{})
+	namespaces, err := ctx.KubernetesClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
