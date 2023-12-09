@@ -102,7 +102,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 	}
 	ctx.CrashLoopRestartCount = args.CrashLoopRestartCount
 
-	if args.CrashLoopRestartCount < 1 {
+	if args.ReapNotReadyThreshold < 1 {
 		return errors.Errorf("--not-ready-threshold-seconds value cannot be less than 1")
 	}
 	ctx.ReapNotReadyThreshold = args.ReapNotReadyThreshold
@@ -127,7 +127,7 @@ func (ctx *ReaperContext) validate(args *Args) error {
 
 	if args.K8sConfigPath != "" {
 		if ok := common.PathExists(args.K8sConfigPath); !ok {
-			return errors.Errorf("--kubeconfig path '%v' was not found", ctx.KubernetesConfigPath)
+			return errors.Errorf("--kubeconfig path '%v' was not found", args.K8sConfigPath)
 		}
 		ctx.KubernetesConfigPath = args.K8sConfigPath
 	}
