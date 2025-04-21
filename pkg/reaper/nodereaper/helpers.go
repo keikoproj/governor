@@ -120,7 +120,7 @@ func (ctx *ReaperContext) terminateInstance(w autoscalingiface.AutoScalingAPI, i
 	// Check if the node is a Karpenter node
 	if hasKarpenterLabel(nodeName, ctx.KubernetesClient) {
 		log.Infof("Detected Karpenter node %v, using kubectl delete instead of ASG termination", nodeName)
-		deleteArgs := []string{"delete", "node", nodeName, "--force"}
+		deleteArgs := []string{"delete", "node", nodeName, "--force", "--wait=false"}
 		deleteCommand := ctx.KubectlLocalPath
 		_, err := runCommand(deleteCommand, deleteArgs)
 		if err != nil {
