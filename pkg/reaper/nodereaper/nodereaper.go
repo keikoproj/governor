@@ -45,6 +45,7 @@ const (
 	reapUnknownDisabledLabelKey = "governor.keikoproj.io/reap-unknown-disabled"
 	reapFlappyDisabledLabelKey  = "governor.keikoproj.io/reap-flappy-disabled"
 	reapOldDisabledLabelKey     = "governor.keikoproj.io/reap-old-disabled"
+	karpenterRegisteredLabelKey = "karpenter.sh/registered"
 
 	NodeReaperResultMetricName = "governor_node_reaper_result"
 	drainFailedMetric          = "DrainFailedAgeExpiredNode"
