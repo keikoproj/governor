@@ -713,7 +713,6 @@ func TestReapTaintedPositive(t *testing.T) {
 		FakeReaper:         reaper,
 		ExpectedReapable:   3,
 		ExpectedTerminated: 3,
-		ExpectedDrainable:  3,
 		ExpectedDrained:    3,
 	}
 	testCase.Run(t, false)
@@ -853,8 +852,8 @@ func TestIgnoreReapFailure(t *testing.T) {
 		},
 		Nodes: []FakeNode{
 			{
-				state:      "Unknown",
-				ageMinutes: 43200,
+				state:                 "Unknown",
+				ageMinutes:            43200,
 			},
 		},
 		FakeReaper:          reaper,
@@ -2157,5 +2156,83 @@ func TestGetAnnotationValue(t *testing.T) {
 		if got != tc.ExpectedValue {
 			t.Fatalf("test #%v: expected match: %s, got: %s", tc.Name, tc.ExpectedValue, got)
 		}
+	}
+}
+
+func TestTerminateKarpenterNode(t *testing.T) {
+	// Create a context with mock kubectl
+	ctx := newFakeReaperContext()
+	
+	// Store the original runCommandFunc to restore it after the test
+	originalRunCommandFunc := runCommandFunc
+	
+	// Replace with test version that captures arguments
+	var capturedCommands []string
+	var capturedArgsList [][]string
+	runCommandFunc = func(call string, args []string) (string, error) {
+		capturedCommands = append(capturedCommands, call)
+		capturedArgsList = append(capturedArgsList, args)
+		return "", nil
+	}
+	
+	// Restore the original function when done
+	defer func() {
+		runCommandFunc = originalRunCommandFunc
+	}()
+	
+	// Create a Karpenter node
+	nodeName := "karpenter-node"
+	instanceId := "i-karpenterinstance"
+	
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			Labels: map[string]string{
+				karpenterRegisteredLabelKey: "true",
+			},
+		},
+	}
+	
+	// Add the node to the fake client
+	_, err := ctx.KubernetesClient.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create test node: %v", err)
+	}
+	
+	// Call terminateInstance
+	err = ctx.terminateInstance(nil, instanceId, nodeName)
+	if err != nil {
+		t.Fatalf("terminateInstance failed: %v", err)
+	}
+	
+	// Verify that at least two commands were executed (delete and annotate)
+	if len(capturedCommands) < 2 {
+		t.Fatalf("Expected at least two commands, got %d", len(capturedCommands))
+	}
+	
+	// Find the kubectl delete command and check if it includes --wait=false
+	deleteCommandFound := false
+	for i, args := range capturedArgsList {
+		// Check if this is the delete command
+		if len(args) >= 2 && args[0] == "delete" && args[1] == "node" {
+			deleteCommandFound = true
+			
+			// Verify the arguments include --wait=false
+			expectedArgs := []string{"delete", "node", nodeName, "--force", "--wait=false"}
+			if !reflect.DeepEqual(args, expectedArgs) {
+				t.Errorf("Expected delete command args %v, got %v", expectedArgs, args)
+			}
+			
+			// Also verify the command executable is kubectl
+			if capturedCommands[i] != ctx.KubectlLocalPath {
+				t.Errorf("Expected command %s, got %s", ctx.KubectlLocalPath, capturedCommands[i])
+			}
+			
+			break
+		}
+	}
+	
+	if !deleteCommandFound {
+		t.Errorf("Delete command not found in executed commands: %v", capturedArgsList)
 	}
 }

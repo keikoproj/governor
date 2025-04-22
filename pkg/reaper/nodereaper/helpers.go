@@ -69,7 +69,8 @@ func parseTaint(t string) (v1.Taint, bool, error) {
 	return taint, true, nil
 }
 
-func runCommand(call string, arg []string) (string, error) {
+// runCommandFunc is used to make runCommand mockable for testing
+var runCommandFunc = func(call string, arg []string) (string, error) {
 	log.Infof("invoking >> %s %s", call, arg)
 	out, err := exec.Command(call, arg...).CombinedOutput()
 	if err != nil {
@@ -78,6 +79,10 @@ func runCommand(call string, arg []string) (string, error) {
 	}
 	log.Infof("call succeeded with output: %s", string(out))
 	return string(out), err
+}
+
+func runCommand(call string, arg []string) (string, error) {
+	return runCommandFunc(call, arg)
 }
 
 func runCommandWithContext(call string, args []string, timeoutSeconds int64) (string, error) {
