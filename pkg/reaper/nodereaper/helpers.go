@@ -155,7 +155,7 @@ func (ctx *ReaperContext) terminateInstance(w autoscalingiface.AutoScalingAPI, i
 
 func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 	log.Infof("draining node %v", name)
-	drainArgs := []string{"drain", name, "--ignore-daemonsets=true", "--delete-local-data=true", "--force", "--grace-period=-1"}
+	drainArgs := []string{"drain", name, "--ignore-daemonsets=true", "--delete-emptydir-data=true", "--force", "--grace-period=-1"}
 	drainCommand := ctx.KubectlLocalPath
 	if dryRun {
 		log.Warnf("dry run is on, instance not drained")
