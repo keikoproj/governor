@@ -45,6 +45,9 @@ const (
 	// ReapOperationCompleted identifies the reap operation of a completed pod
 	ReapOperationCompleted = "CompletedPod"
 
+	// ReapOperationEvicted identifies the reap operation of an evicted pod
+	ReapOperationEvicted = "EvictedPod"
+
 	// NamespaceExclusionAnnotationKey is the annotation key for excluding a namespace from reap events
 	NamespaceExclusionAnnotationKey = "governor.keikoproj.io/disable-pod-reaper"
 	// NamespaceCompletedExclusionAnnotationKey is the annotation key for excluding a namespace from reaping completed pods
@@ -55,6 +58,12 @@ const (
 	NamespaceStuckExclusionAnnotationKey = "governor.keikoproj.io/disable-stuck-pod-reap"
 	// NamespaceExclusionEnabledAnnotationValue is the annotation value for excluding a namespace from reap events
 	NamespaceExclusionEnabledAnnotationValue = "true"
+
+	// PodEvictedReason is the reason name for evicted pods
+	PodEvictedReason = "Evicted"
+
+	// NamespaceEvictedExclusionAnnotationKey is the annotation key for excluding a namespace from reaping evicted pods
+	NamespaceEvictedExclusionAnnotationKey = "governor.keikoproj.io/disable-evicted-pod-reap"
 
 	TerminatedPodReason       = "TerminatedPod"
 	PodReaperResultMetricName = "governor_pod_reaper_result"
@@ -76,6 +85,7 @@ func Run(ctx *ReaperContext) error {
 	ctx.deriveStuckPods()
 	ctx.deriveCompletedPods()
 	ctx.deriveFailedPods()
+	ctx.deriveEvictedPods()
 
 	if ctx.isQueueEmpty() {
 		log.Info("no reapable pods found")
@@ -105,6 +115,12 @@ func (ctx *ReaperContext) Reap() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to reap failed pods")
 	}
+
+	err = ctx.reapPods(ctx.EvictedPods)
+	if err != nil {
+		return errors.Wrap(err, "failed to reap evicted pods")
+	}
+
 	ctx.exposeMetric(PodReaperResultMetricName, TerminatedPodReason, float64(ctx.ReapedPods))
 	return nil
 }
@@ -119,6 +135,10 @@ func (ctx *ReaperContext) isQueueEmpty() bool {
 	}
 
 	if ctx.ReapFailed && len(ctx.FailedPods) != 0 {
+		return false
+	}
+
+	if ctx.ReapEvicted && len(ctx.EvictedPods) != 0 {
 		return false
 	}
 
@@ -156,6 +176,11 @@ func (ctx *ReaperContext) isExcludedNamespace(namespace, reapOperation string) b
 
 		// exclusion for failed pods
 		if reapOperation == ReapOperationFailed && key == NamespaceFailedExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
+			return true
+		}
+
+		// exclusion for evicted pods
+		if reapOperation == ReapOperationEvicted && key == NamespaceEvictedExclusionAnnotationKey && value == NamespaceExclusionEnabledAnnotationValue {
 			return true
 		}
 	}
@@ -349,6 +374,46 @@ func (ctx *ReaperContext) deriveStuckPods() {
 	}
 }
 
+func (ctx *ReaperContext) deriveEvictedPods() {
+	if !ctx.ReapEvicted {
+		return
+	}
+
+	now := time.Now().UTC()
+	for _, pod := range ctx.AllPods.Items {
+		var (
+			podName      = pod.ObjectMeta.Name
+			podNamespace = pod.ObjectMeta.Namespace
+		)
+
+		// If pod reason is not Evicted, skip
+		if pod.Status.Reason != PodEvictedReason {
+			continue
+		}
+
+		// When softReap mode is On, only pods with 0 running containers are reapable
+		if ctx.SoftReap && podHasRunningContainers(pod) {
+			log.Infof("%v/%v is not reapable - running containers detected", podNamespace, podName)
+			continue
+		}
+
+		// For evicted pods, we use pod status timestamp since they don't have container statuses
+		evictionTime := pod.Status.StartTime
+		if evictionTime == nil {
+			// If no start time, use creation time
+			evictionTime = &metav1.Time{Time: pod.CreationTimestamp.Time}
+		}
+
+		diff := now.Sub(evictionTime.Time).Minutes()
+
+		// Determine if pod is reapable
+		if diff > ctx.ReapEvictedAfter && !ctx.isExcludedNamespace(podNamespace, ReapOperationEvicted) {
+			log.Infof("%v/%v is reapable !! pod in evicted state for diff: %.2f/%v", podNamespace, podName, diff, ctx.ReapEvictedAfter)
+			ctx.EvictedPods[podName] = podNamespace
+		}
+	}
+}
+
 func (ctx *ReaperContext) getPods() error {
 	log.Infoln("starting scan cycle")
 	terminatingPods := &v1.PodList{}
@@ -398,11 +463,14 @@ func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 	ctx.StuckPods = make(map[string]string)
 	ctx.CompletedPods = make(map[string]string)
 	ctx.FailedPods = make(map[string]string)
+	ctx.EvictedPods = make(map[string]string)
 	ctx.DryRun = args.DryRun
 	ctx.ReapCompleted = args.ReapCompleted
 	ctx.ReapFailed = args.ReapFailed
+	ctx.ReapEvicted = args.ReapEvicted
 	ctx.ReapCompletedAfter = args.ReapCompletedAfter
 	ctx.ReapFailedAfter = args.ReapFailedAfter
+	ctx.ReapEvictedAfter = args.ReapEvictedAfter
 
 	if args.PromPushgateway != "" {
 		ctx.MetricsAPI = common.NewPrometheusAPI(args.PromPushgateway)
@@ -421,6 +489,12 @@ func (ctx *ReaperContext) ValidateArguments(args *Args) error {
 
 	if ctx.ReapFailed && ctx.ReapFailedAfter < 1 {
 		err := fmt.Errorf("--reap-failed-after must be set to a number greater than or equal to 1")
+		log.Errorln(err)
+		return err
+	}
+
+	if ctx.ReapEvicted && ctx.ReapEvictedAfter < 1 {
+		err := fmt.Errorf("--reap-evicted-after must be set to a number greater than or equal to 1")
 		log.Errorln(err)
 		return err
 	}
