@@ -33,12 +33,15 @@ type ReaperContext struct {
 	StuckPods            map[string]string
 	CompletedPods        map[string]string
 	FailedPods           map[string]string
+	EvictedPods          map[string]string
 	ReapedPods           int
 	TimeToReap           float64
 	ReapCompletedAfter   float64
 	ReapFailedAfter      float64
+	ReapEvictedAfter     float64
 	ReapCompleted        bool
 	ReapFailed           bool
+	ReapEvicted          bool
 	SoftReap             bool
 	DryRun               bool
 	MetricsAPI           common.MetricsAPI
@@ -56,6 +59,8 @@ type Args struct {
 	ReapFailed         bool
 	ReapFailedAfter    float64
 	PromPushgateway    string
+	ReapEvicted          bool
+	ReapEvictedAfter    float64
 }
 
 type FinishTimes []time.Time

@@ -55,4 +55,6 @@ func init() {
 	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapCompletedAfter, "reap-completed-after", 240, "Reaping threshold in minutes for completed pods")
 	podReapCmd.Flags().BoolVar(&podReaperArgs.ReapFailed, "reap-failed", false, "Delete pods in failed phase")
 	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapFailedAfter, "reap-failed-after", 240, "Reaping threshold in minutes for failed pods")
+	podReapCmd.Flags().BoolVar(&podReaperArgs.ReapEvicted, "reap-evicted", false, "Delete pods in evicted state")
+	podReapCmd.Flags().Float64Var(&podReaperArgs.ReapEvictedAfter, "reap-evicted-after", 240, "Reaping threshold in minutes for evicted pods")
 }
