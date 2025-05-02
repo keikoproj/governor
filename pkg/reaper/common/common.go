@@ -84,7 +84,7 @@ func OutOfClusterAuth(providedConfigPath string) (*kubernetes.Clientset, error) 
 	} else {
 		err := fmt.Sprintf("could not find valid kubeconfig file")
 		Log.Errorln(err)
-		return &kubernetes.Clientset{}, fmt.Errorf(err)
+		return &kubernetes.Clientset{}, fmt.Errorf("%s", err)
 	}
 
 	Log.Infof("kubeconfig: %v\n", configPath)
