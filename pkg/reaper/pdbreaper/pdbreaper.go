@@ -186,7 +186,7 @@ func (ctx *ReaperContext) handleReapableDisruptionBudgets() error {
 		}
 		err = ctx.publishEvent(pdb, EventReasonPodDisruptionBudgetDeleted, EventMessageDeletedFmt)
 		if err != nil {
-			log.Warnf(err.Error())
+			log.Warnf("%s", err.Error())
 		}
 		ctx.ReapedPodDisruptionBudgetCount++
 		ctx.exposeMetric(pdb, EventReasonPodDisruptionBudgetDeleted, 1)
@@ -221,7 +221,7 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					ctx.addReapablePodDisruptionBudget(pdb)
 					err = ctx.publishEvent(pdb, EventReasonBlockingDetected, EventMessageBlockingFmt)
 					if err != nil {
-						log.Warnf(err.Error())
+						log.Warnf("%s", err.Error())
 					}
 					ctx.exposeMetric(pdb, EventReasonBlockingDetected, 1)
 				} else {
@@ -235,7 +235,7 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					ctx.addReapablePodDisruptionBudget(pdb)
 					err = ctx.publishEvent(pdb, EventReasonBlockingCrashLoopDetected, EventMessageCrashLoopFmt)
 					if err != nil {
-						log.Warnf(err.Error())
+						log.Warnf("%s", err.Error())
 					}
 					ctx.exposeMetric(pdb, EventReasonBlockingCrashLoopDetected, 1)
 				} else {
@@ -251,7 +251,7 @@ func (ctx *ReaperContext) handleBlockingDisruptionBudgets() error {
 					ctx.addReapablePodDisruptionBudget(pdb)
 					err = ctx.publishEvent(pdb, EventReasonBlockingNotReadyStateDetected, EventMessageNotReadyFmt)
 					if err != nil {
-						log.Warnf(err.Error())
+						log.Warnf("%s", err.Error())
 					}
 					ctx.exposeMetric(pdb, EventReasonBlockingNotReadyStateDetected, 1)
 				} else {
@@ -297,7 +297,7 @@ func (ctx *ReaperContext) handleMultipleDisruptionBudgets() error {
 			for _, pdb := range pdbs {
 				err := ctx.publishEvent(pdb, EventReasonMultipleDetected, EventMessageMultipleFmt)
 				if err != nil {
-					log.Warnf(err.Error())
+					log.Warnf("%s", err.Error())
 				}
 				ctx.exposeMetric(pdb, EventReasonMultipleDetected, 1)
 			}
