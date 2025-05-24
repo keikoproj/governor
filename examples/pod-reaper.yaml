@@ -67,3 +67,6 @@ spec:
             - --reap-after=10
             # Only reap pods without containers running
             - --soft-reap=true
+            # Enable reaping of evicted pods after 4 hours
+            - --reap-evicted=true
+            - --reap-evicted-after=240
