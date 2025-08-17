@@ -6,4 +6,5 @@ bin/*
 .DS_Store
 .idea/*
 vendor
+.qodo
 .windsurfrules

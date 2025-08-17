@@ -69,7 +69,8 @@ func parseTaint(t string) (v1.Taint, bool, error) {
 	return taint, true, nil
 }
 
-func runCommand(call string, arg []string) (string, error) {
+// runCommandFunc is used to make runCommand mockable for testing
+var runCommandFunc = func(call string, arg []string) (string, error) {
 	log.Infof("invoking >> %s %s", call, arg)
 	out, err := exec.Command(call, arg...).CombinedOutput()
 	if err != nil {
@@ -78,6 +79,10 @@ func runCommand(call string, arg []string) (string, error) {
 	}
 	log.Infof("call succeeded with output: %s", string(out))
 	return string(out), err
+}
+
+func runCommand(call string, arg []string) (string, error) {
+	return runCommandFunc(call, arg)
 }
 
 func runCommandWithContext(call string, args []string, timeoutSeconds int64) (string, error) {
@@ -117,15 +122,27 @@ func (ctx *ReaperContext) uncordonNode(name string, dryRun bool, ignoreDrainFail
 }
 
 func (ctx *ReaperContext) terminateInstance(w autoscalingiface.AutoScalingAPI, id string, nodeName string) error {
+	// Check if the node is a Karpenter node
+	if hasKarpenterLabel(nodeName, ctx.KubernetesClient) {
+		log.Infof("Detected Karpenter node %v, using kubectl delete instead of ASG termination", nodeName)
+		deleteArgs := []string{"delete", "node", nodeName, "--force", "--wait=false"}
+		deleteCommand := ctx.KubectlLocalPath
+		_, err := runCommand(deleteCommand, deleteArgs)
+		if err != nil {
+			log.Errorf("failed to delete Karpenter node %v, %v", nodeName, err)
+			return err
+		}
+	} else {
+		// Use traditional ASG termination for non-Karpenter nodes
+		terminateInput := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
+			InstanceId:                     &id,
+			ShouldDecrementDesiredCapacity: aws.Bool(false),
+		}
 
-	terminateInput := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
-		InstanceId:                     &id,
-		ShouldDecrementDesiredCapacity: aws.Bool(false),
-	}
-
-	_, err := w.TerminateInstanceInAutoScalingGroup(terminateInput)
-	if err != nil {
-		return err
+		_, err := w.TerminateInstanceInAutoScalingGroup(terminateInput)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := ctx.annotateNode(nodeName, stateAnnotationKey, terminatedStateName); err != nil {
@@ -138,7 +155,7 @@ func (ctx *ReaperContext) terminateInstance(w autoscalingiface.AutoScalingAPI, i
 
 func (ctx *ReaperContext) drainNode(name string, dryRun bool) error {
 	log.Infof("draining node %v", name)
-	drainArgs := []string{"drain", name, "--ignore-daemonsets=true", "--delete-local-data=true", "--force", "--grace-period=-1"}
+	drainArgs := []string{"drain", name, "--ignore-daemonsets=true", "--delete-emptydir-data=true", "--force", "--grace-period=-1"}
 	drainCommand := ctx.KubectlLocalPath
 	if dryRun {
 		log.Warnf("dry run is on, instance not drained")
@@ -335,6 +352,16 @@ func getAutoScalingGroup(w autoscalingiface.AutoScalingAPI, name string) (autosc
 		return autoscaling.Group{}, err
 	}
 	return *response.AutoScalingGroups[0], nil
+}
+
+func hasKarpenterLabel(nodeName string, kubeClient kubernetes.Interface) bool {
+	node, err := kubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		log.Errorf("failed to get node %v, %v", nodeName, err)
+		return false
+	}
+	_, ok := node.ObjectMeta.Labels[karpenterRegisteredLabelKey]
+	return ok
 }
 
 func dumpSpec(nodeName string, kubeClient kubernetes.Interface) error {
