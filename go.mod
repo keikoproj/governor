@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/Pallinder/go-randomdata v1.2.0
-	github.com/aws/aws-sdk-go v1.55.7
+	github.com/aws/aws-sdk-go v1.55.8
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/onsi/gomega v1.39.1
 	github.com/pkg/errors v0.9.1
