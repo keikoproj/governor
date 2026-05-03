@@ -6,7 +6,7 @@ require (
 	github.com/Pallinder/go-randomdata v1.2.0
 	github.com/aws/aws-sdk-go v1.55.8
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/gomega v1.40.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.4
